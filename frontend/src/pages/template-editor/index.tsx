@@ -5,6 +5,14 @@ import { PromptTemplateService } from "@/../bindings/prompttool/internal/service
 import { Button } from "@/components/ui/button"
 import { ROUTE_PATHS } from "@/router/paths"
 
+import { BlockList } from "./blocks/block-list"
+import {
+  createEmptyBlock,
+  parseTemplateContent,
+  serializeBlocks,
+} from "./blocks/serializer"
+import type { TemplateBlock } from "./blocks/types"
+
 export default function TemplateEditorPage() {
   const navigate = useNavigate()
   const params = useParams<{ id?: string }>()
@@ -12,7 +20,9 @@ export default function TemplateEditorPage() {
   const isEdit = editId !== null && !Number.isNaN(editId)
 
   const [title, setTitle] = useState("")
-  const [content, setContent] = useState("")
+  const [blocks, setBlocks] = useState<TemplateBlock[]>(() => [
+    createEmptyBlock(),
+  ])
   const [loading, setLoading] = useState(isEdit)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -29,7 +39,7 @@ export default function TemplateEditorPage() {
           setError("模板不存在")
         } else {
           setTitle(found.title)
-          setContent(found.content)
+          setBlocks(parseTemplateContent(found.content))
         }
       } catch (e) {
         if (!cancelled) setError(String(e))
@@ -46,24 +56,31 @@ export default function TemplateEditorPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     const trimmedTitle = title.trim()
-    const trimmedContent = content.trim()
-    if (!trimmedTitle || !trimmedContent) {
-      setError("标题和内容不能为空")
+    const nonEmptyBlocks = blocks
+      .map((b) => ({ ...b, content: b.content.trimEnd() }))
+      .filter((b) => b.content.trim().length > 0)
+    if (!trimmedTitle) {
+      setError("标题不能为空")
+      return
+    }
+    if (nonEmptyBlocks.length === 0) {
+      setError("至少需要一个非空块")
       return
     }
     setSubmitting(true)
     setError(null)
     try {
+      const payloadContent = serializeBlocks(nonEmptyBlocks)
       if (isEdit && editId !== null) {
         await PromptTemplateService.Update({
           id: editId,
           title: trimmedTitle,
-          content: trimmedContent,
+          content: payloadContent,
         })
       } else {
         await PromptTemplateService.Create({
           title: trimmedTitle,
-          content: trimmedContent,
+          content: payloadContent,
         })
       }
       navigate(ROUTE_PATHS.HOME)
@@ -87,7 +104,7 @@ export default function TemplateEditorPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-svh w-full max-w-2xl flex-col p-6">
+    <div className="mx-auto flex min-h-svh w-full max-w-3xl flex-col p-6">
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">
           {isEdit ? "编辑模板" : "新建模板"}
@@ -108,14 +125,9 @@ export default function TemplateEditorPage() {
           />
         </div>
 
-        <div className="flex flex-1 flex-col gap-1">
-          <label className="text-sm font-medium">内容</label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="请输入模板内容,可使用 {{variable}} 占位"
-            className="min-h-[240px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
-          />
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium">内容块</label>
+          <BlockList blocks={blocks} onChange={setBlocks} />
         </div>
 
         {error && (
@@ -124,7 +136,7 @@ export default function TemplateEditorPage() {
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t bg-background/80 py-3 backdrop-blur">
           <Button
             type="button"
             variant="outline"

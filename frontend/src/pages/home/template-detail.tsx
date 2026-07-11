@@ -1,4 +1,8 @@
 import { Button } from "@/components/ui/button"
+import {
+  blocksToPlainText,
+  parseTemplateContent,
+} from "@/pages/template-editor/blocks/serializer"
 
 import type { Template } from "./types"
 
@@ -27,6 +31,9 @@ export function TemplateDetail({
     }
   }
 
+  const blocks = parseTemplateContent(template.content)
+  const previewText = blocksToPlainText(blocks)
+
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col overflow-hidden bg-muted/10">
       <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
@@ -50,9 +57,11 @@ export function TemplateDetail({
           <div className="truncate font-medium">{template.title}</div>
         </div>
         <div className="min-w-0">
-          <div className="text-xs text-muted-foreground">内容</div>
+          <div className="text-xs text-muted-foreground">
+            内容 · {blocks.length} 个块
+          </div>
           <pre className="mt-1 line-clamp-6 whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-xs">
-            {template.content}
+            {previewText}
           </pre>
         </div>
         <div className="text-xs text-muted-foreground">
