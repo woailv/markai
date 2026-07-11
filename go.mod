@@ -1,4 +1,4 @@
-module changeme
+module prompttool
 
 go 1.25.0
 
