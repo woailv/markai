@@ -152,7 +152,7 @@ function MarkdownBlock({
         >
           <CodeMirror
             value={block.content}
-            minHeight="140px"
+            minHeight="60px"
             extensions={[markdown(), ...promptExtensions]}
             onChange={(v) => onChange(block.id, v)}
             basicSetup={{
