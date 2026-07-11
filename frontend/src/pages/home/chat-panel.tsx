@@ -19,8 +19,6 @@ interface ChatPanelProps {
   activeTemplate: Template | null
 }
 
-const MAX_INPUT_LENGTH = 4000
-
 export function ChatPanel({
   messages,
   onSend,
@@ -66,7 +64,6 @@ export function ChatPanel({
   }
 
   const canSend = input.trim().length > 0
-  const isNearLimit = input.length > MAX_INPUT_LENGTH * 0.8
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col border-r bg-background">
@@ -120,24 +117,13 @@ export function ChatPanel({
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) =>
-              setInput(e.target.value.slice(0, MAX_INPUT_LENGTH))
-            }
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="输入消息... (Enter 发送,Shift+Enter 换行)"
             rows={1}
-            maxLength={MAX_INPUT_LENGTH}
             className="max-h-[200px] min-h-[36px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
           />
-          <div className="flex items-center justify-between gap-2">
-            <span
-              className={cn(
-                "text-[10px] tabular-nums transition-colors",
-                isNearLimit ? "text-amber-600" : "text-muted-foreground/70",
-              )}
-            >
-              {input.length} / {MAX_INPUT_LENGTH}
-            </span>
+          <div className="flex items-center justify-end gap-2">
             <Button
               type="submit"
               size="sm"

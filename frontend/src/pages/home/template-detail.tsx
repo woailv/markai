@@ -1,13 +1,5 @@
-import {
-  Check,
-  Clock,
-  Copy,
-  FileText,
-  Pencil,
-  Trash2,
-  Variable,
-} from "lucide-react"
-import { useMemo, useState } from "react"
+import { Clock, FileText, Pencil, Trash2, Variable } from "lucide-react"
+import { useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -28,8 +20,6 @@ export function TemplateDetail({
   onEdit,
   onDelete,
 }: TemplateDetailProps) {
-  const [copied, setCopied] = useState(false)
-
   const preview = useMemo(
     () => (template ? buildTemplatePreview(template) : null),
     [template],
@@ -57,16 +47,6 @@ export function TemplateDetail({
     }
   }
 
-  const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(preview.plain)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // 忽略剪贴板失败
-    }
-  }
-
   return (
     <aside className="flex h-full w-96 shrink-0 flex-col overflow-hidden border-l bg-muted/10">
       {/* Header */}
@@ -74,20 +54,6 @@ export function TemplateDetail({
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold tracking-tight">模板详情</h2>
           <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCopy}
-              title="复制模板内容"
-              className="h-7 gap-1 px-2"
-            >
-              {copied ? (
-                <Check className="h-3.5 w-3.5 text-emerald-600" />
-              ) : (
-                <Copy className="h-3.5 w-3.5" />
-              )}
-              <span className="text-xs">{copied ? "已复制" : "复制"}</span>
-            </Button>
             <Button
               size="sm"
               variant="ghost"
