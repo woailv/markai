@@ -1,5 +1,5 @@
 import { ArrowLeft, Save } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 
 import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
@@ -7,8 +7,6 @@ import { Button } from "@/components/ui/button"
 import { ROUTE_PATHS } from "@/router/paths"
 
 import { BlockList } from "./blocks/block-list"
-import { EditorSidebar } from "./blocks/editor-sidebar"
-import { EditorStatusBar } from "./blocks/editor-statusbar"
 import {
   createEmptyBlock,
   parseTemplateContent,
@@ -103,14 +101,14 @@ export default function TemplateEditorPage() {
             content: payloadContent,
           })
         }
-        navigate(ROUTE_PATHS.HOME)
+        setDirty(false)
       } catch (err) {
         setError(String(err))
       } finally {
         setSubmitting(false)
       }
     },
-    [blocks, editId, isEdit, navigate, title],
+    [blocks, editId, isEdit, title],
   )
 
   const handleCancel = useCallback(() => {
@@ -141,11 +139,6 @@ export default function TemplateEditorPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [handleSubmit, handleCancel])
 
-  const headerTitle = useMemo(
-    () => (isEdit ? "编辑模板" : "新建模板"),
-    [isEdit],
-  )
-
   if (loading) {
     return (
       <div className="flex min-h-svh items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -173,9 +166,6 @@ export default function TemplateEditorPage() {
           <div className="mx-1 h-5 w-px bg-border" />
 
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <span className="shrink-0 text-xs font-medium text-muted-foreground">
-              {headerTitle}
-            </span>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -184,28 +174,11 @@ export default function TemplateEditorPage() {
             />
           </div>
 
-          <span
-            className={
-              "hidden items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] sm:flex " +
-              (dirty
-                ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
-                : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-300")
-            }
-          >
-            <span
-              className={
-                "h-1.5 w-1.5 rounded-full " +
-                (dirty ? "bg-amber-500" : "bg-emerald-500")
-              }
-            />
-            {dirty ? "未保存" : "已保存"}
-          </span>
-
           <Button
             type="button"
             size="sm"
             onClick={() => handleSubmit()}
-            disabled={submitting}
+            disabled={submitting || !dirty}
             className="shrink-0"
           >
             <Save className="mr-1 h-3.5 w-3.5" />
@@ -215,7 +188,7 @@ export default function TemplateEditorPage() {
       </header>
 
       {/* 主体 */}
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6 lg:flex-row">
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-6">
         <main className="flex min-w-0 flex-1 flex-col gap-4">
           {error && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -225,12 +198,7 @@ export default function TemplateEditorPage() {
 
           <BlockList blocks={blocks} onChange={setBlocks} />
         </main>
-
-        <EditorSidebar blocks={blocks} />
       </div>
-
-      {/* 底部状态栏 */}
-      <EditorStatusBar blocks={blocks} dirty={dirty} />
     </div>
   )
 }
