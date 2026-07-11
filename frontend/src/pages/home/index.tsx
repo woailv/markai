@@ -35,11 +35,11 @@ export default function HomePage() {
   )
 
   const handleSend = (content: string) => {
-    const now = new Date().toLocaleString()
+    const now = new Date().toISOString()
     setMessages((prev) => [
       ...prev,
       {
-        id: `u-${prev.length + 1}`,
+        id: `u-${prev.length + 1}-${Date.now()}`,
         role: "user",
         content,
         createdAt: now,
@@ -68,7 +68,11 @@ export default function HomePage() {
         onSelect={setSelectedId}
         onCreate={handleCreate}
       />
-      <ChatPanel messages={messages} onSend={handleSend} />
+      <ChatPanel
+        messages={messages}
+        onSend={handleSend}
+        activeTemplate={selectedTemplate}
+      />
       <TemplateDetail
         template={selectedTemplate}
         onEdit={handleEdit}
