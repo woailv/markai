@@ -1,9 +1,24 @@
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
 import { Plus } from "lucide-react"
 import { v4 as uuid } from "uuid"
 
 import { Button } from "@/components/ui/button"
 
-import { MarkdownBlock } from "./markdown-block"
+import { SortableMarkdownBlock } from "./markdown-block"
 import { createEmptyBlock } from "./serializer"
 import type { TemplateBlock } from "./types"
 
@@ -13,6 +28,13 @@ interface BlockListProps {
 }
 
 export function BlockList({ blocks, onChange }: BlockListProps) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  )
+
   const updateBlock = (id: string, content: string) => {
     onChange(blocks.map((b) => (b.id === id ? { ...b, content } : b)))
   }
@@ -20,15 +42,6 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
   const removeBlock = (id: string) => {
     if (blocks.length === 1) return
     onChange(blocks.filter((b) => b.id !== id))
-  }
-
-  const moveBlock = (id: string, dir: -1 | 1) => {
-    const idx = blocks.findIndex((b) => b.id === id)
-    const target = idx + dir
-    if (idx < 0 || target < 0 || target >= blocks.length) return
-    const next = blocks.slice()
-    ;[next[idx], next[target]] = [next[target], next[idx]]
-    onChange(next)
   }
 
   const duplicateBlock = (id: string) => {
@@ -44,20 +57,39 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
     onChange([...blocks, createEmptyBlock()])
   }
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = blocks.findIndex((b) => b.id === active.id)
+    const newIndex = blocks.findIndex((b) => b.id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    onChange(arrayMove(blocks, oldIndex, newIndex))
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {blocks.map((b, i) => (
-        <MarkdownBlock
-          key={b.id}
-          block={b}
-          index={i}
-          total={blocks.length}
-          onChange={updateBlock}
-          onRemove={removeBlock}
-          onMove={moveBlock}
-          onDuplicate={duplicateBlock}
-        />
-      ))}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={blocks.map((b) => b.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {blocks.map((b, i) => (
+            <SortableMarkdownBlock
+              key={b.id}
+              block={b}
+              index={i}
+              total={blocks.length}
+              onChange={updateBlock}
+              onRemove={removeBlock}
+              onDuplicate={duplicateBlock}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
       <Button
         type="button"
         variant="outline"
@@ -66,7 +98,7 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
         className="self-start border-dashed"
       >
         <Plus className="mr-1 h-3.5 w-3.5" />
-        添加 Markdown 块
+        添加内容块
       </Button>
     </div>
   )

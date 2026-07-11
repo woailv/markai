@@ -1,12 +1,12 @@
 import { markdown } from "@codemirror/lang-markdown"
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import CodeMirror from "@uiw/react-codemirror"
 import {
   ChevronDown,
   ChevronRight,
   Copy,
   GripVertical,
-  MoveDown,
-  MoveUp,
   Trash2,
 } from "lucide-react"
 import { useState } from "react"
@@ -23,42 +23,82 @@ interface MarkdownBlockProps {
   total: number
   onChange: (id: string, content: string) => void
   onRemove: (id: string) => void
-  onMove: (id: string, dir: -1 | 1) => void
   onDuplicate: (id: string) => void
 }
 
-export function MarkdownBlock({
+export function SortableMarkdownBlock(props: MarkdownBlockProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.block.id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 30 : undefined,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <MarkdownBlock
+        {...props}
+        isDragging={isDragging}
+        dragHandleProps={{ ...attributes, ...listeners }}
+      />
+    </div>
+  )
+}
+
+interface InternalProps extends MarkdownBlockProps {
+  isDragging?: boolean
+  dragHandleProps?: React.HTMLAttributes<HTMLButtonElement>
+}
+
+function MarkdownBlock({
   block,
   index,
   total,
   onChange,
   onRemove,
-  onMove,
   onDuplicate,
-}: MarkdownBlockProps) {
+  isDragging,
+  dragHandleProps,
+}: InternalProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [focused, setFocused] = useState(false)
   const summary = blockSummary(block.content) || "空块"
-  const chars = block.content.length
+
+  const stateClass = isDragging
+    ? "border-primary/60 shadow-lg ring-2 ring-primary/20"
+    : focused
+      ? "border-primary/50 shadow-md ring-2 ring-primary/10"
+      : "border-border/60 hover:border-border hover:shadow-sm"
 
   return (
     <div
       className={
-        "group relative rounded-lg border bg-background shadow-sm transition-all " +
-        (focused
-          ? "border-primary/50 ring-2 ring-primary/10"
-          : "hover:border-border/80")
+        "group relative overflow-hidden rounded-xl border bg-background transition-all duration-150 " +
+        stateClass
       }
     >
-      {/* 左侧序号色条 */}
+      {/* 左侧激活色条 */}
       <div
         className={
-          "absolute left-0 top-0 h-full w-1 rounded-l-lg transition-colors " +
-          (focused ? "bg-primary" : "bg-transparent")
+          "absolute left-0 top-0 h-full w-[3px] transition-colors " +
+          (focused || isDragging ? "bg-primary" : "bg-transparent")
         }
       />
 
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
+      <div
+        className={
+          "flex items-center gap-2 border-b px-3 py-1.5 transition-colors " +
+          (focused ? "bg-muted/40" : "bg-muted/20")
+        }
+      >
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
@@ -72,7 +112,7 @@ export function MarkdownBlock({
           )}
         </button>
 
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-muted px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-md bg-background px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground ring-1 ring-border/60">
           {index + 1}
         </span>
 
@@ -88,25 +128,7 @@ export function MarkdownBlock({
           {summary}
         </span>
 
-        <span className="hidden text-[10px] tabular-nums text-muted-foreground/70 sm:inline">
-          {chars} 字
-        </span>
-
-        <div className="flex items-center gap-0.5 opacity-40 transition-opacity group-hover:opacity-100">
-          <IconBtn
-            label="上移"
-            disabled={index === 0}
-            onClick={() => onMove(block.id, -1)}
-          >
-            <MoveUp className="h-3.5 w-3.5" />
-          </IconBtn>
-          <IconBtn
-            label="下移"
-            disabled={index === total - 1}
-            onClick={() => onMove(block.id, 1)}
-          >
-            <MoveDown className="h-3.5 w-3.5" />
-          </IconBtn>
+        <div className="flex items-center gap-0.5 opacity-50 transition-opacity group-hover:opacity-100">
           <IconBtn label="复制块" onClick={() => onDuplicate(block.id)}>
             <Copy className="h-3.5 w-3.5" />
           </IconBtn>
@@ -118,12 +140,15 @@ export function MarkdownBlock({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </IconBtn>
-          <span
-            className="ml-1 cursor-grab text-muted-foreground/60 active:cursor-grabbing"
-            title="拖动排序(待实现)"
+          <button
+            type="button"
+            {...dragHandleProps}
+            className="ml-0.5 flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted-foreground/70 hover:bg-muted hover:text-foreground active:cursor-grabbing"
+            title="拖动排序"
+            aria-label="拖动排序"
           >
             <GripVertical className="h-3.5 w-3.5" />
-          </span>
+          </button>
         </div>
       </div>
 
