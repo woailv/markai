@@ -8,6 +8,10 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core"
 import {
+  restrictToParentElement,
+  restrictToVerticalAxis,
+} from "@dnd-kit/modifiers"
+import {
   SortableContext,
   arrayMove,
   sortableKeyboardCoordinates,
@@ -72,6 +76,7 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
+        modifiers={[restrictToVerticalAxis, restrictToParentElement]}
       >
         <SortableContext
           items={blocks.map((b) => b.id)}

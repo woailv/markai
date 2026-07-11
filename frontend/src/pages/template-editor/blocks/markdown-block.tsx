@@ -85,14 +85,6 @@ function MarkdownBlock({
         stateClass
       }
     >
-      {/* 左侧激活色条 */}
-      <div
-        className={
-          "absolute left-0 top-0 h-full w-[3px] transition-colors " +
-          (focused || isDragging ? "bg-primary" : "bg-transparent")
-        }
-      />
-
       <div
         className={
           "flex items-center gap-2 border-b px-3 py-1.5 transition-colors " +

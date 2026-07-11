@@ -83,7 +83,10 @@ const theme = EditorView.theme({
     textDecorationStyle: "dotted",
     textUnderlineOffset: "2px",
   },
+  "&.cm-focused": { outline: "none" },
   ".cm-focused": { outline: "none" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  ".cm-cursor": { borderLeftColor: "hsl(var(--primary))" },
   ".cm-placeholder": { color: "hsl(var(--muted-foreground))", opacity: "0.5" },
 })
 
