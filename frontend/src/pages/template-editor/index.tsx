@@ -1,10 +1,17 @@
 import { ArrowLeft, Save } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react"
 import { useNavigate, useParams } from "react-router-dom"
 
 import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
 import { Button } from "@/components/ui/button"
-import { ROUTE_PATHS } from "@/router/paths"
+import { ROUTE_PATHS, buildTemplateEditPath } from "@/router/paths"
 
 import { BlockList } from "./blocks/block-list"
 import {
@@ -14,61 +21,75 @@ import {
 } from "./blocks/serializer"
 import type { TemplateBlock } from "./blocks/types"
 
+/**
+ * 生成用于脏检测的快照:仅关注可持久化字段(title + 各块 content),
+ * 忽略块 id 变化(重排/复制不算改),使用 \u0000 作为分隔符避免误合并。
+ */
+function snapshot(title: string, blocks: TemplateBlock[]): string {
+  return title + "\u0000" + blocks.map((b) => b.content).join("\u0000")
+}
+
 export default function TemplateEditorPage() {
   const navigate = useNavigate()
   const params = useParams<{ id?: string }>()
-  const editId = params.id ? Number(params.id) : null
-  const isEdit = editId !== null && !Number.isNaN(editId)
+  const paramId = params.id ? Number(params.id) : null
+  const isEditRoute = paramId !== null && !Number.isNaN(paramId)
+
+  // 当前编辑对象的 id(新建保存成功后会被填充,后续保存走 Update)
+  const [currentId, setCurrentId] = useState<number | null>(
+    isEditRoute ? paramId : null,
+  )
+  const isEdit = currentId !== null
 
   const [title, setTitle] = useState("")
   const [blocks, setBlocks] = useState<TemplateBlock[]>(() => [
     createEmptyBlock(),
   ])
-  const [loading, setLoading] = useState(isEdit)
+  const [loading, setLoading] = useState(isEditRoute)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [dirty, setDirty] = useState(false)
-  const initializedRef = useRef(false)
+  // 基线快照:加载完成或保存成功后刷新;dirty 由当前快照与基线比较得出
+  const [baseline, setBaseline] = useState<string>(() =>
+    snapshot("", [createEmptyBlock()]),
+  )
 
   useEffect(() => {
-    if (!isEdit) {
-      initializedRef.current = true
+    if (!isEditRoute) {
       return
     }
     let cancelled = false
     const load = async () => {
       try {
         const list = (await PromptTemplateService.List()) ?? []
-        const found = list.find((t) => t.id === editId)
+        const found = list.find((t) => t.id === paramId)
         if (cancelled) return
         if (!found) {
           setError("模板不存在")
         } else {
+          const loadedBlocks = parseTemplateContent(found.content)
           setTitle(found.title)
-          setBlocks(parseTemplateContent(found.content))
+          setBlocks(loadedBlocks)
+          setBaseline(snapshot(found.title, loadedBlocks))
         }
       } catch (e) {
         if (!cancelled) setError(String(e))
       } finally {
-        if (!cancelled) {
-          setLoading(false)
-          // 下一 tick 再打开 dirty 追踪,避免加载后立即标记
-          setTimeout(() => {
-            initializedRef.current = true
-          }, 0)
-        }
+        if (!cancelled) setLoading(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [editId, isEdit])
+  }, [paramId, isEditRoute])
 
-  // 追踪脏状态
-  useEffect(() => {
-    if (initializedRef.current) setDirty(true)
-  }, [title, blocks])
+  const currentSnapshot = useMemo(
+    () => snapshot(title, blocks),
+    [title, blocks],
+  )
+  const dirty = currentSnapshot !== baseline
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
 
   const handleSubmit = useCallback(
     async (e?: FormEvent) => {
@@ -89,32 +110,39 @@ export default function TemplateEditorPage() {
       setError(null)
       try {
         const payloadContent = serializeBlocks(nonEmptyBlocks)
-        if (isEdit && editId !== null) {
+        if (isEdit && currentId !== null) {
           await PromptTemplateService.Update({
-            id: editId,
+            id: currentId,
             title: trimmedTitle,
             content: payloadContent,
           })
         } else {
-          await PromptTemplateService.Create({
+          const created = await PromptTemplateService.Create({
             title: trimmedTitle,
             content: payloadContent,
           })
+          // 新建成功后切换到编辑态,避免下次保存再次 Create
+          if (created && typeof created.id === "number") {
+            setCurrentId(created.id)
+            // 用 replace 更新 URL,保持刷新语义正确、不污染历史栈
+            navigate(buildTemplateEditPath(created.id), { replace: true })
+          }
         }
-        setDirty(false)
+        // 刷新脏检测基线为已保存的内容
+        setBaseline(snapshot(trimmedTitle, nonEmptyBlocks))
       } catch (err) {
         setError(String(err))
       } finally {
         setSubmitting(false)
       }
     },
-    [blocks, editId, isEdit, title],
+    [blocks, currentId, isEdit, navigate, title],
   )
 
   const handleCancel = useCallback(() => {
-    if (dirty && !confirm("有未保存的修改,确定离开?")) return
+    if (dirtyRef.current && !confirm("有未保存的修改,确定离开?")) return
     navigate(ROUTE_PATHS.HOME)
-  }, [dirty, navigate])
+  }, [navigate])
 
   // 快捷键:Ctrl+S 保存 / Ctrl+Enter 新增块 / Esc 返回
   useEffect(() => {
