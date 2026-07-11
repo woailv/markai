@@ -8,9 +8,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view"
 
-// {{variable}} 占位
 const VAR_RE = /\{\{\s*[\w.-]+\s*\}\}/g
-// 文件路径:@src/foo.ts 或 ./a/b.tsx 或 绝对路径 E:\xxx\yy.ts
 const PATH_RE =
   /(@[\w./\\-]+\.[a-zA-Z0-9]+)|((?:\.{1,2}\/|[a-zA-Z]:[\\/])[\w./\\-]+\.[a-zA-Z0-9]+)/g
 
@@ -61,20 +59,32 @@ const highlightPlugin = ViewPlugin.fromClass(
 )
 
 const theme = EditorView.theme({
-  "&": { fontSize: "13px" },
-  ".cm-content": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+  "&": { fontSize: "13px", backgroundColor: "transparent" },
+  ".cm-content": {
+    fontFamily:
+      "ui-monospace, SFMono-Regular, Menlo, 'JetBrains Mono', monospace",
+    padding: "6px 4px",
+    caretColor: "hsl(var(--primary))",
+  },
+  ".cm-gutters": { backgroundColor: "transparent", border: "none" },
   ".cm-tpl-var": {
-    backgroundColor: "rgba(59,130,246,0.15)",
+    backgroundColor: "rgba(59,130,246,0.12)",
     color: "rgb(37,99,235)",
     borderRadius: "3px",
-    padding: "0 2px",
+    padding: "0 3px",
+    fontWeight: "500",
   },
   ".cm-tpl-path": {
-    color: "rgb(217,119,6)",
+    color: "rgb(180,83,9)",
+    backgroundColor: "rgba(245,158,11,0.08)",
+    borderRadius: "3px",
+    padding: "0 2px",
     textDecoration: "underline",
     textDecorationStyle: "dotted",
+    textUnderlineOffset: "2px",
   },
   ".cm-focused": { outline: "none" },
+  ".cm-placeholder": { color: "hsl(var(--muted-foreground))", opacity: "0.5" },
 })
 
 export const promptExtensions = [

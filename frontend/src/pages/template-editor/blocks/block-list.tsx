@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react"
+import { v4 as uuid } from "uuid"
 
 import { Button } from "@/components/ui/button"
 
@@ -30,6 +31,15 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
     onChange(next)
   }
 
+  const duplicateBlock = (id: string) => {
+    const idx = blocks.findIndex((b) => b.id === id)
+    if (idx < 0) return
+    const copy: TemplateBlock = { ...blocks[idx], id: uuid() }
+    const next = blocks.slice()
+    next.splice(idx + 1, 0, copy)
+    onChange(next)
+  }
+
   const addBlock = () => {
     onChange([...blocks, createEmptyBlock()])
   }
@@ -45,6 +55,7 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
           onChange={updateBlock}
           onRemove={removeBlock}
           onMove={moveBlock}
+          onDuplicate={duplicateBlock}
         />
       ))}
       <Button
@@ -52,7 +63,7 @@ export function BlockList({ blocks, onChange }: BlockListProps) {
         variant="outline"
         size="sm"
         onClick={addBlock}
-        className="self-start"
+        className="self-start border-dashed"
       >
         <Plus className="mr-1 h-3.5 w-3.5" />
         添加 Markdown 块
