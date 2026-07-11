@@ -28,8 +28,8 @@ export function TemplateDetail({
   }
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col bg-muted/10">
-      <div className="flex items-center justify-between border-b px-4 py-3">
+    <aside className="flex h-full w-80 shrink-0 flex-col overflow-hidden bg-muted/10">
+      <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
         <h2 className="text-sm font-semibold">模板详情</h2>
         <div className="flex gap-2">
           <Button
@@ -44,14 +44,14 @@ export function TemplateDetail({
           </Button>
         </div>
       </div>
-      <div className="flex-1 space-y-4 overflow-y-auto p-4 text-sm">
-        <div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-hidden p-4 text-sm">
+        <div className="min-w-0">
           <div className="text-xs text-muted-foreground">标题</div>
-          <div className="font-medium">{template.title}</div>
+          <div className="truncate font-medium">{template.title}</div>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-xs text-muted-foreground">内容</div>
-          <pre className="mt-1 whitespace-pre-wrap rounded-md border bg-background p-3 text-xs">
+          <pre className="mt-1 line-clamp-6 whitespace-pre-wrap break-words rounded-md border bg-background p-3 text-xs">
             {template.content}
           </pre>
         </div>

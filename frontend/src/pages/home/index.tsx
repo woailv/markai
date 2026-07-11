@@ -61,7 +61,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="flex h-svh">
+    <div className="flex h-svh overflow-hidden">
       <TemplateList
         templates={templates}
         selectedId={selectedId}

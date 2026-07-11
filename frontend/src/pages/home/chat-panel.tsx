@@ -22,11 +22,11 @@ export function ChatPanel({ messages, onSend }: ChatPanelProps) {
   }
 
   return (
-    <section className="flex h-full flex-1 flex-col border-r">
-      <div className="border-b px-4 py-3">
+    <section className="flex h-full min-w-0 flex-1 flex-col border-r">
+      <div className="shrink-0 border-b px-4 py-3">
         <h2 className="text-sm font-semibold">会话</h2>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -37,7 +37,7 @@ export function ChatPanel({ messages, onSend }: ChatPanelProps) {
           >
             <div
               className={cn(
-                "max-w-[80%] rounded-lg px-3 py-2 text-sm",
+                "max-w-[80%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm",
                 msg.role === "user"
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted"
@@ -53,7 +53,7 @@ export function ChatPanel({ messages, onSend }: ChatPanelProps) {
       </div>
       <form
         onSubmit={handleSubmit}
-        className="flex items-end gap-2 border-t p-3"
+        className="flex shrink-0 items-end gap-2 border-t p-3"
       >
         <textarea
           value={input}
