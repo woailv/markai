@@ -18,7 +18,11 @@ func init() {
 func main() {
 	log := logger.New()
 
-	a := app.New(assets, log)
+	a, err := app.New(assets, log)
+	if err != nil {
+		log.Error("fatal", "err", err)
+		os.Exit(1)
+	}
 	if err := a.Run(); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
