@@ -31,10 +31,18 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: init db: %w", err)
 	}
 
+	svcList, err := services.Registry(database)
+	if err != nil {
+		if closeErr := database.Close(); closeErr != nil {
+			logger.Error("close db after service init failure", "err", closeErr)
+		}
+		return nil, fmt.Errorf("app: init services: %w", err)
+	}
+
 	wailsApp := application.New(application.Options{
 		Name:        cfg.Name,
 		Description: cfg.Description,
-		Services:    services.Registry(database),
+		Services:    svcList,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
