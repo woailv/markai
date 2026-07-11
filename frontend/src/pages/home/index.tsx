@@ -32,7 +32,7 @@ export default function HomePage() {
   }
 
   return (
-    <div className="-m-6 flex h-[calc(100svh-3.25rem)]">
+    <div className="flex h-svh">
       <TemplateList
         templates={templates}
         selectedId={selectedId}
