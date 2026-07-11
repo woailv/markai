@@ -1,15 +1,9 @@
-import { Bot, Send, Sparkles, User } from "lucide-react"
-import {
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-  type KeyboardEvent,
-} from "react"
+import { Bot, Sparkles, User } from "lucide-react"
+import { useEffect, useRef } from "react"
 
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+import { RichComposer } from "./composer/rich-composer"
 import { formatRelativeTime } from "./types"
 import type { ChatMessage, Template } from "./types"
 
@@ -24,9 +18,7 @@ export function ChatPanel({
   onSend,
   activeTemplate,
 }: ChatPanelProps) {
-  const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // 自动滚动到底部
   useEffect(() => {
@@ -34,36 +26,6 @@ export function ChatPanel({
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [messages])
-
-  // 输入区自适应高度
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [input])
-
-  const send = () => {
-    const trimmed = input.trim()
-    if (!trimmed) return
-    onSend(trimmed)
-    setInput("")
-  }
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    send()
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter 发送,Shift+Enter 换行
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault()
-      send()
-    }
-  }
-
-  const canSend = input.trim().length > 0
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col border-r bg-background">
@@ -104,38 +66,9 @@ export function ChatPanel({
       </div>
 
       {/* Composer */}
-      <form
-        onSubmit={handleSubmit}
-        className="shrink-0 border-t bg-background/50 p-3"
-      >
-        <div
-          className={cn(
-            "flex flex-col gap-2 rounded-lg border bg-background p-2 transition-colors",
-            "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring/30",
-          )}
-        >
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入消息... (Enter 发送,Shift+Enter 换行)"
-            rows={1}
-            className="max-h-[200px] min-h-[36px] w-full resize-none bg-transparent px-1 py-1 text-sm outline-none placeholder:text-muted-foreground"
-          />
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              type="submit"
-              size="sm"
-              disabled={!canSend}
-              className="h-7 gap-1 px-3"
-            >
-              <Send className="h-3 w-3" />
-              发送
-            </Button>
-          </div>
-        </div>
-      </form>
+      <div className="shrink-0 border-t bg-background/50 p-3">
+        <RichComposer onSend={onSend} />
+      </div>
     </section>
   )
 }
