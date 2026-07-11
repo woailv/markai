@@ -1,11 +1,4 @@
-export interface Template {
-  id: string
-  name: string
-  description: string
-  content: string
-  tags: string[]
-  updatedAt: string
-}
+export type { PromptTemplate as Template } from "@/../bindings/prompttool/internal/services/models"
 
 export interface ChatMessage {
   id: string

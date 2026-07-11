@@ -1,46 +1,62 @@
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 import type { Template } from "./types"
 
 interface TemplateListProps {
   templates: Template[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  selectedId: number | null
+  onSelect: (id: number) => void
+  onCreate: () => void
 }
 
 export function TemplateList({
   templates,
   selectedId,
   onSelect,
+  onCreate,
 }: TemplateListProps) {
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/20">
-      <div className="border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">模板</h2>
-        <p className="text-xs text-muted-foreground">共 {templates.length} 个</p>
+      <div className="flex items-center justify-between border-b px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">模板</h2>
+          <p className="text-xs text-muted-foreground">
+            共 {templates.length} 个
+          </p>
+        </div>
+        <Button size="sm" onClick={onCreate}>
+          新建
+        </Button>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
-        {templates.map((tpl) => {
-          const isActive = tpl.id === selectedId
-          return (
-            <button
-              key={tpl.id}
-              type="button"
-              onClick={() => onSelect(tpl.id)}
-              className={cn(
-                "mb-1 flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                isActive
-                  ? "bg-background shadow-sm ring-1 ring-border"
-                  : "hover:bg-background/60"
-              )}
-            >
-              <span className="font-medium">{tpl.name}</span>
-              <span className="line-clamp-2 text-xs text-muted-foreground">
-                {tpl.description}
-              </span>
-            </button>
-          )
-        })}
+        {templates.length === 0 ? (
+          <div className="p-4 text-center text-xs text-muted-foreground">
+            暂无模板,点击"新建"创建一个
+          </div>
+        ) : (
+          templates.map((tpl) => {
+            const isActive = tpl.id === selectedId
+            return (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => onSelect(tpl.id)}
+                className={cn(
+                  "mb-1 flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-left text-sm transition-colors",
+                  isActive
+                    ? "bg-background shadow-sm ring-1 ring-border"
+                    : "hover:bg-background/60"
+                )}
+              >
+                <span className="font-medium">{tpl.title}</span>
+                <span className="line-clamp-2 text-xs text-muted-foreground">
+                  {tpl.content}
+                </span>
+              </button>
+            )
+          })
+        )}
       </div>
     </aside>
   )

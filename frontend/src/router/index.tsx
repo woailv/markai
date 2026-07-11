@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom"
 import { ROUTE_PATHS } from "./paths"
 
 const HomePage = lazy(() => import("@/pages/home"))
+const TemplateEditorPage = lazy(() => import("@/pages/template-editor"))
 
 function PageFallback() {
   return (
@@ -21,6 +22,14 @@ const router = createBrowserRouter([
   {
     path: ROUTE_PATHS.HOME,
     element: withSuspense(<HomePage />),
+  },
+  {
+    path: ROUTE_PATHS.TEMPLATE_NEW,
+    element: withSuspense(<TemplateEditorPage />),
+  },
+  {
+    path: ROUTE_PATHS.TEMPLATE_EDIT,
+    element: withSuspense(<TemplateEditorPage />),
   },
 ])
 
