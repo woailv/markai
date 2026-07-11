@@ -1,16 +1,45 @@
-import { useAuthStore } from "@/store"
+import { useMemo, useState } from "react"
+
+import { ChatPanel } from "./chat-panel"
+import { MOCK_MESSAGES, MOCK_TEMPLATES } from "./mock-data"
+import { TemplateDetail } from "./template-detail"
+import { TemplateList } from "./template-list"
+import type { ChatMessage } from "./types"
 
 export default function HomePage() {
-  const user = useAuthStore((state) => state.user)
+  const [templates] = useState(MOCK_TEMPLATES)
+  const [selectedId, setSelectedId] = useState<string | null>(
+    MOCK_TEMPLATES[0]?.id ?? null
+  )
+  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES)
+
+  const selectedTemplate = useMemo(
+    () => templates.find((t) => t.id === selectedId) ?? null,
+    [templates, selectedId]
+  )
+
+  const handleSend = (content: string) => {
+    const now = new Date().toLocaleString()
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `u-${prev.length + 1}`,
+        role: "user",
+        content,
+        createdAt: now,
+      },
+    ])
+  }
 
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold">
-        Welcome{user ? `, ${user.name}` : ""}
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        This is your PromptTool dashboard.
-      </p>
+    <div className="-m-6 flex h-[calc(100svh-3.25rem)]">
+      <TemplateList
+        templates={templates}
+        selectedId={selectedId}
+        onSelect={setSelectedId}
+      />
+      <ChatPanel messages={messages} onSend={handleSend} />
+      <TemplateDetail template={selectedTemplate} />
     </div>
   )
 }

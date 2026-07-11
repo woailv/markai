@@ -4,7 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom"
 import { RootLayout } from "@/layouts/root-layout"
 import { AuthLayout } from "@/layouts/auth-layout"
 
-import { RequireAuth, RequireGuest } from "./guards"
+import { RequireGuest } from "./guards"
 import { ROUTE_PATHS } from "./paths"
 
 const HomePage = lazy(() => import("@/pages/home"))
@@ -29,11 +29,7 @@ function withSuspense(node: React.ReactNode) {
 const router = createBrowserRouter([
   {
     path: ROUTE_PATHS.ROOT,
-    element: (
-      <RequireAuth>
-        <RootLayout />
-      </RequireAuth>
-    ),
+    element: <RootLayout />,
     children: [
       { index: true, element: withSuspense(<HomePage />) },
       {
