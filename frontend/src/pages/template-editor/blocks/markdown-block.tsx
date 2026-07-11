@@ -161,7 +161,7 @@ function MarkdownBlock({
               highlightActiveLine: false,
               highlightActiveLineGutter: false,
             }}
-            placeholder="输入 Markdown 内容,{{variable}} 与文件路径会自动高亮"
+            placeholder="请输入内容..."
           />
         </div>
       )}
