@@ -84,17 +84,19 @@ export function ChatToolbar({
 
       {/* 更多菜单 */}
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            title="更多"
-          >
-            <MoreHorizontal className="h-3.5 w-3.5" />
-          </Button>
-        </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              title="更多"
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
         <PopoverContent align="end" className="w-40 p-1">
           <button
             type="button"
@@ -115,9 +117,11 @@ export function ChatToolbar({
       {/* 清空确认弹窗 */}
       <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
         {/* 用一个不可见的 trigger 定位在右上角 */}
-        <PopoverTrigger asChild>
-          <span className="pointer-events-none absolute" aria-hidden />
-        </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <span className="pointer-events-none absolute" aria-hidden />
+          }
+        />
         <PopoverContent align="end" className="w-64 p-3">
           <div className="space-y-3">
             <div>
