@@ -10,24 +10,41 @@ import {
 
 /**
  * 文件引用 token 在编辑器文档中的编码格式。
- * 使用不可见的角括号,避免与用户正常输入冲突。
+ * 采用通用的 Markdown 文件引用格式,便于跨系统传递与人类阅读:
  *
- * 形如: ⟦file:/absolute/path/to/file.ext⟧
+ *   [@<basename>](file:///<absolute-path>)
+ *
+ * 例如: [@index.tsx](file:///E:/goproject/prompttool/frontend/src/pages/home/index.tsx)
+ *
+ * 说明:
+ * - 该格式即为最终发送给下游的"纯文本"表示,`documentToPlainText`
+ *   不会对其做进一步展开,直接原样保留。
+ * - 编辑器中通过 ViewPlugin 将其可视化为紧凑的 chip;
+ *   但底层文档中真实存在的字符就是这段 Markdown。
+ * - 路径中不允许出现 `)` 与换行,普通文件系统路径均可安全承载。
  */
-const TOKEN_OPEN = "\u27E6file:"
-const TOKEN_CLOSE = "\u27E7"
+export const FILE_TOKEN_REGEX =
+  /\[@[^\]\n]+\]\(file:\/\/\/([^)\n]+)\)/g
 
-export const FILE_TOKEN_REGEX = /\u27E6file:([^\u27E7]+)\u27E7/g
+/** 将绝对路径规范化为 URL 中的正斜杠形式(仅用于文档中的 token 编码) */
+function toForwardSlash(p: string): string {
+  return p.replace(/\\/g, "/")
+}
 
-/** 编码为文档 token */
+/** 编码为文档 token(Markdown 引用形式) */
 export function encodeFileToken(absolutePath: string): string {
-  return `${TOKEN_OPEN}${absolutePath}${TOKEN_CLOSE}`
+  const name = basename(absolutePath)
+  return `[@${name}](file:///${toForwardSlash(absolutePath).replace(/^\/+/, "")})`
 }
 
 /** 从 token 字符串中解出路径,未匹配返回 null */
 export function decodeFileToken(token: string): string | null {
-  if (!token.startsWith(TOKEN_OPEN) || !token.endsWith(TOKEN_CLOSE)) return null
-  return token.slice(TOKEN_OPEN.length, token.length - TOKEN_CLOSE.length)
+  FILE_TOKEN_REGEX.lastIndex = 0
+  const m = FILE_TOKEN_REGEX.exec(token)
+  if (!m) return null
+  // 完整匹配整段
+  if (m[0] !== token) return null
+  return m[1]
 }
 
 /** 提取路径的 basename(兼容 Windows 与 POSIX 分隔符) */
@@ -41,10 +58,14 @@ export function basename(p: string): string {
 }
 
 /**
- * 将文档中的文件 token 还原为原始路径,得到真实要发送的文本。
+ * 得到真实要发送的文本。
+ *
+ * 由于文档中的 token 本身已经是通用 Markdown 文件引用格式
+ * (`[@name](file:///abs/path)`),此处直接原样返回,不做展开。
+ * 下游可根据需要自行解析或保留原样展示。
  */
 export function documentToPlainText(doc: string): string {
-  return doc.replace(FILE_TOKEN_REGEX, (_, p1: string) => p1)
+  return doc
 }
 
 /** 判断输入是否包含 token */
