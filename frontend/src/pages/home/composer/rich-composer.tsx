@@ -69,6 +69,46 @@ export function RichComposer({
       EditorView.lineWrapping,
       placeholderExt(placeholder),
       fileChipPlugin,
+      // 拦截 CodeMirror 内建的 drop 处理:
+      // 默认行为会将拖入的文件通过 FileReader 读为文本并插入到光标位置,
+      // 这会导致"拖入文件时文件内容被塞进输入框"。此处直接接管 drop/dragover,
+      // 将文件转换为 file token chip 插入,并返回 true 阻止 CM 默认处理。
+      EditorView.domEventHandlers({
+        dragover(event) {
+          if (event.dataTransfer?.types?.includes("Files")) {
+            event.preventDefault()
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+            return true
+          }
+          return false
+        },
+        drop(event, view) {
+          const files = event.dataTransfer?.files
+          if (!files || files.length === 0) return false
+          event.preventDefault()
+          event.stopPropagation()
+
+          const paths: string[] = []
+          for (let i = 0; i < files.length; i++) {
+            const f = files[i]
+            const p = (f as unknown as { path?: string }).path ?? f.name
+            if (p) paths.push(p)
+          }
+          if (paths.length === 0) return true
+
+          const pos =
+            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+            view.state.doc.length
+          const insert = paths.map(encodeFileToken).join(" ") + " "
+          view.dispatch({
+            changes: { from: pos, to: pos, insert },
+            selection: { anchor: pos + insert.length },
+            scrollIntoView: true,
+          })
+          view.focus()
+          return true
+        },
+      }),
       Prec.highest(
         keymap.of([
           {
