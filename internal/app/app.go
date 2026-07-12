@@ -51,7 +51,8 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		},
 	})
 
-	window.NewMain(wailsApp, config.DefaultWindow())
+	mainWin := window.NewMain(wailsApp, config.DefaultWindow())
+	registerFilesDropForward(wailsApp, mainWin, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	StartTimeTicker(ctx, wailsApp)
