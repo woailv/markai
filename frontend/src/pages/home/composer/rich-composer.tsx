@@ -235,7 +235,6 @@ export function RichComposer({
         isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
       )}
     >
-      {/* 文本编辑区 */}
       <div className="px-2 pt-1.5">
         <CodeMirror
           ref={cmRef}
@@ -259,7 +258,6 @@ export function RichComposer({
         />
       </div>
 
-      {/* 内嵌工具条 */}
       <div className="px-2 pb-1.5 pt-1">
         <ComposerToolbar
           templates={templates}
