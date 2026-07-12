@@ -1,6 +1,7 @@
 import { EditorView, keymap, placeholder as placeholderExt } from "@codemirror/view"
 import { EditorState, Prec } from "@codemirror/state"
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror"
+import { Events } from "@wailsio/runtime"
 import {
   useCallback,
   useEffect,
@@ -65,37 +66,19 @@ export function RichComposer({
       EditorView.domEventHandlers({
         dragover(event) {
           if (event.dataTransfer?.types?.includes("Files")) {
-            event.preventDefault()
+            event.preventDefault() // 阻止浏览器默认行为以允许放置
             if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
-            return true
+            return true // 告诉 CodeMirror 我们处理了，防止它进一步干预
           }
           return false
         },
-        drop(event, view) {
-          const files = event.dataTransfer?.files
-          if (!files || files.length === 0) return false
-          event.preventDefault()
-          event.stopPropagation()
-
-          const paths: string[] = []
-          for (let i = 0; i < files.length; i++) {
-            const f = files[i]
-            const p = (f as unknown as { path?: string }).path ?? f.name
-            if (p) paths.push(p)
+        drop(event) {
+          if (event.dataTransfer?.types?.includes("Files")) {
+            event.preventDefault() // 核心：阻止 CodeMirror 自动读取并粘贴文件内容
+            // 严禁调用 event.stopPropagation()，必须让事件冒泡到外层容器
+            return true // 告诉 CodeMirror 已处理
           }
-          if (paths.length === 0) return true
-
-          const pos =
-            view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
-            view.state.doc.length
-          const insert = paths.map(encodeFileToken).join(" ") + " "
-          view.dispatch({
-            changes: { from: pos, to: pos, insert },
-            selection: { anchor: pos + insert.length },
-            scrollIntoView: true,
-          })
-          view.focus()
-          return true
+          return false
         },
       }),
       Prec.highest(
@@ -179,8 +162,7 @@ export function RichComposer({
 
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
     if (e.dataTransfer?.types?.includes("Files")) {
-      e.preventDefault()
-      e.stopPropagation()
+      e.preventDefault() // 必须 preventDefault 才能成为有效的 drop 目标
       e.dataTransfer.dropEffect = "copy"
       if (!isDragOver) setIsDragOver(true)
     }
@@ -192,40 +174,35 @@ export function RichComposer({
 
   const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
     setIsDragOver(false)
-    const files = e.dataTransfer?.files
-    if (!files || files.length === 0) return
-    e.preventDefault()
-    e.stopPropagation()
-
-    const paths: string[] = []
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i]
-      const p = (f as unknown as { path?: string }).path ?? f.name
-      if (p) paths.push(p)
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault() // 阻止浏览器默认打开文件
     }
-    if (paths.length > 0) {
-      insertFilesAtCoords(paths, e.clientX, e.clientY)
-    }
+    // 依然不调用 stopPropagation()，保证 Wails 拦截器收到冒泡
   }
 
   useEffect(() => {
-    const handler = (evt: Event) => {
-      const detail = (evt as CustomEvent<{ paths: string[] }>).detail
-      if (!detail?.paths?.length) return
-      insertFilesAtCursor(detail.paths)
+    const unsub = Events.On("files:dropped", (evt) => {
+      setIsDragOver(false)
+      // 兼容 Wails 3 中 payload 可能被包在数组首位的情况
+      const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      if (!payload?.paths?.length) return
+      
+      if (payload.hasCoords && payload.x !== undefined && payload.y !== undefined) {
+        insertFilesAtCoords(payload.paths, payload.x, payload.y)
+      } else {
+        insertFilesAtCursor(payload.paths)
+      }
+    })
+    return () => {
+      unsub()
     }
-    window.addEventListener("prompttool:files-dropped", handler as EventListener)
-    return () =>
-      window.removeEventListener(
-        "prompttool:files-dropped",
-        handler as EventListener,
-      )
-  }, [insertFilesAtCursor])
+  }, [insertFilesAtCoords, insertFilesAtCursor])
 
   const canSend = documentToPlainText(doc).trim().length > 0
 
   return (
     <div
+      data-file-drop-target="true"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -233,6 +210,8 @@ export function RichComposer({
         "flex flex-col rounded-xl border bg-background transition-colors",
         "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring/30",
         isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
+        // Wails 会在原生拖放经过带有 data-file-drop-target 的元素时附加此 class
+        "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
       )}
     >
       <div className="px-2 pt-1.5">
