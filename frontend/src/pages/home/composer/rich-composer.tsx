@@ -74,7 +74,6 @@ export function RichComposer({
           {
             key: "Enter",
             run: (view) => {
-              // @ts-expect-error: EditorView 提供的 composing 状态
               if (view.composing) return false
               sendRef.current()
               return true

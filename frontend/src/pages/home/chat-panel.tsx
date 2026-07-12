@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react"
 
 import { cn } from "@/lib/utils"
 
+import { ChatToolbar } from "./chat-toolbar"
 import { RichComposer } from "./composer/rich-composer"
 import { formatRelativeTime } from "./types"
 import type { ChatMessage, Template } from "./types"
@@ -10,6 +11,8 @@ import type { ChatMessage, Template } from "./types"
 interface ChatPanelProps {
   messages: ChatMessage[]
   onSend: (content: string) => void
+  onClear: () => void
+  onOpenHistory?: () => void
   templates: Template[]
   selectedTemplateIds: Set<number>
   onToggleTemplate: (id: number) => void
@@ -21,6 +24,8 @@ interface ChatPanelProps {
 export function ChatPanel({
   messages,
   onSend,
+  onClear,
+  onOpenHistory,
   templates,
   selectedTemplateIds,
   onToggleTemplate,
@@ -40,7 +45,7 @@ export function ChatPanel({
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      {/* Header - 极简 */}
+      {/* Header - 极简 + 工具条 */}
       <div className="shrink-0 border-b px-4 py-2">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
@@ -52,9 +57,11 @@ export function ChatPanel({
               </span>
             )}
           </h2>
-          <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {messages.length} 条
-          </span>
+          <ChatToolbar
+            messages={messages}
+            onClear={onClear}
+            onOpenHistory={onOpenHistory}
+          />
         </div>
       </div>
 

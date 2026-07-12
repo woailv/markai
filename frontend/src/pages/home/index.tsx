@@ -47,6 +47,10 @@ export default function HomePage() {
     ])
   }
 
+  const handleClear = () => {
+    setMessages([])
+  }
+
   const handleToggleTemplate = (id: number) => {
     setSelectedTemplateIds((prev) => {
       const next = new Set(prev)
@@ -74,6 +78,7 @@ export default function HomePage() {
       <ChatPanel
         messages={messages}
         onSend={handleSend}
+        onClear={handleClear}
         templates={templates}
         selectedTemplateIds={selectedTemplateIds}
         onToggleTemplate={handleToggleTemplate}
