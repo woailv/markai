@@ -7,6 +7,7 @@ import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 import { ChatPanel } from "./chat-panel"
 import { MOCK_MESSAGES } from "./mock-data"
 import type { ChatMessage, Template } from "./types"
+import { buildTemplatePreview } from "./utils"
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -36,15 +37,32 @@ export default function HomePage() {
 
   const handleSend = (content: string) => {
     const now = new Date().toISOString()
+    // 组装载荷: 已选模板(按列表顺序)作为前置上下文,用户正文在后。
+    // 用户正文中的文件标签已由 RichComposer 通过 documentToPlainText 还原为绝对路径。
+    const templateBlocks = templates
+      .filter((t) => selectedTemplateIds.has(t.id))
+      .map((tpl) => {
+        const { plain } = buildTemplatePreview(tpl)
+        const title = tpl.title?.trim() || "未命名模板"
+        return `# ${title}\n${plain}`.trim()
+      })
+      .filter((s) => s.length > 0)
+
+    const payload =
+      templateBlocks.length > 0
+        ? `${templateBlocks.join("\n\n---\n\n")}\n\n---\n\n${content}`
+        : content
+
     setMessages((prev) => [
       ...prev,
       {
         id: `u-${prev.length + 1}-${Date.now()}`,
         role: "user",
-        content,
+        content: payload,
         createdAt: now,
       },
     ])
+    // 注意:发送后保留模板选中状态,便于连续对话复用。
   }
 
   const handleClear = () => {

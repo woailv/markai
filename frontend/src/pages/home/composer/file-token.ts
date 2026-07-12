@@ -1,8 +1,8 @@
-import { RangeSetBuilder } from "@codemirror/state"
+import { RangeSet, RangeSetBuilder } from "@codemirror/state"
 import {
   Decoration,
   type DecorationSet,
-  type EditorView,
+  EditorView,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -108,18 +108,25 @@ class FileChipWidget extends WidgetType {
 
 /**
  * ViewPlugin: 扫描可视区域内的文件 token,替换为原子装饰。
+ * 通过 EditorView.atomicRanges 将 token 声明为原子单元:
+ *   - 左右方向键跨越整个 token,不进入内部
+ *   - Backspace / Delete 一次删除整个 token
+ *   - 鼠标点击 token 中部,光标吸附到就近的边缘
  */
 export const fileChipPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
+    atomics: RangeSet<Decoration>
 
     constructor(view: EditorView) {
       this.decorations = this.build(view)
+      this.atomics = this.buildAtomics(view)
     }
 
     update(update: ViewUpdate) {
       if (update.docChanged || update.viewportChanged) {
         this.decorations = this.build(update.view)
+        this.atomics = this.buildAtomics(update.view)
       }
     }
 
@@ -144,8 +151,29 @@ export const fileChipPlugin = ViewPlugin.fromClass(
       }
       return builder.finish()
     }
+
+    /**
+     * 扫描整个文档(而不只是可视区域)构建 atomicRanges,
+     * 避免视口外的 token 失去原子性导致光标进入内部。
+     */
+    buildAtomics(view: EditorView): RangeSet<Decoration> {
+      const builder = new RangeSetBuilder<Decoration>()
+      const text = view.state.doc.toString()
+      let m: RegExpExecArray | null
+      FILE_TOKEN_REGEX.lastIndex = 0
+      while ((m = FILE_TOKEN_REGEX.exec(text))) {
+        const start = m.index
+        const end = start + m[0].length
+        builder.add(start, end, Decoration.mark({}))
+      }
+      return builder.finish()
+    }
   },
   {
     decorations: (v) => v.decorations,
+    provide: (plugin) =>
+      EditorView.atomicRanges.of(
+        (view) => view.plugin(plugin)?.atomics ?? RangeSet.empty,
+      ),
   },
 )
