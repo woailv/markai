@@ -10,6 +10,29 @@ export interface CreateInput {
 }
 
 /**
+ * FileEntry 目录列表中的单项元数据。
+ */
+export interface FileEntry {
+    "name": string;
+    "path": string;
+    "isDir": boolean;
+    "size": number;
+
+    /**
+     * Unix 秒
+     */
+    "modTime": number;
+}
+
+/**
+ * MovePathInput 文件/目录移动或重命名入参。
+ */
+export interface MovePathInput {
+    "source": string;
+    "destination": string;
+}
+
+/**
  * PromptTemplate 提示词模板持久化模型。
  */
 export interface PromptTemplate {
@@ -21,10 +44,38 @@ export interface PromptTemplate {
 }
 
 /**
+ * ReadFileResult 读取文件结果。
+ */
+export interface ReadFileResult {
+    "path": string;
+    "content": string;
+    "size": number;
+}
+
+/**
  * UpdateInput 修改入参。
  */
 export interface UpdateInput {
     "id": number;
     "title": string;
     "content": string;
+}
+
+/**
+ * WriteFileInput 写文件入参。
+ * 若目标目录不存在,自动创建父目录。
+ */
+export interface WriteFileInput {
+    "path": string;
+    "content": string;
+}
+
+/**
+ * WriteFileResult 写文件结果,包含 git 风格的 diff 提示。
+ * Created=true 表示新建文件(展示"创建文件"),否则展示"编辑文件"。
+ */
+export interface WriteFileResult {
+    "path": string;
+    "created": boolean;
+    "diff": string;
 }

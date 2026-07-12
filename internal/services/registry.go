@@ -19,5 +19,6 @@ func Registry(database *db.DB) ([]application.Service, error) {
 	return []application.Service{
 		application.NewService(NewGreetService()),
 		application.NewService(promptSvc),
+		application.NewService(NewFileService()),
 	}, nil
 }
