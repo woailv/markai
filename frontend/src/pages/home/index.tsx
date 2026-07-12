@@ -9,6 +9,10 @@ import { MOCK_MESSAGES } from "./mock-data"
 import type { ChatMessage, Template } from "./types"
 import { buildTemplatePreview } from "./utils"
 
+// 用于检测发送内容是否为编辑协议指令 (精确匹配 XML 标签头)
+const COMMAND_TAG_RE =
+  /<(?:WRITE_FILE|EDIT_FILE|DELETE_FILE|MOVE_PATH|CREATE_DIRECTORY|REQUEST_DIRECTORY_LIST|REQUEST_FILE)(?=[\s/>])/
+
 export default function HomePage() {
   const navigate = useNavigate()
   const [templates, setTemplates] = useState<Template[]>([])
@@ -37,27 +41,33 @@ export default function HomePage() {
 
   const handleSend = (content: string) => {
     const now = new Date().toISOString()
-    // 组装载荷: 已选模板(按列表顺序)作为前置上下文,用户正文在后。
-    // 用户正文中的文件标签已由 RichComposer 通过 documentToPlainText 还原为绝对路径。
-    const templateBlocks = templates
-      .filter((t) => selectedTemplateIds.has(t.id))
-      .map((tpl) => {
-        const { plain } = buildTemplatePreview(tpl)
-        const title = tpl.title?.trim() || "未命名模板"
-        return `# ${title}\n${plain}`.trim()
-      })
-      .filter((s) => s.length > 0)
+    
+    // 若匹配到指令标签，视为 AI 发送的消息
+    const isAssistant = COMMAND_TAG_RE.test(content)
+    let payload = content
 
-    const payload =
-      templateBlocks.length > 0
-        ? `${templateBlocks.join("\n\n---\n\n")}\n\n---\n\n${content}`
-        : content
+    // 仅在真实用户发送时，才消耗性能组装已选模板上下文
+    if (!isAssistant) {
+      // 用户正文中的文件标签已由 RichComposer 通过 documentToPlainText 还原为绝对路径。
+      const templateBlocks = templates
+        .filter((t) => selectedTemplateIds.has(t.id))
+        .map((tpl) => {
+          const { plain } = buildTemplatePreview(tpl)
+          const title = tpl.title?.trim() || "未命名模板"
+          return `# ${title}\n${plain}`.trim()
+        })
+        .filter((s) => s.length > 0)
+
+      if (templateBlocks.length > 0) {
+        payload = `${templateBlocks.join("\n\n---\n\n")}\n\n---\n\n${content}`
+      }
+    }
 
     setMessages((prev) => [
       ...prev,
       {
-        id: `u-${prev.length + 1}-${Date.now()}`,
-        role: "user",
+        id: `${isAssistant ? "a" : "u"}-${prev.length + 1}-${Date.now()}`,
+        role: isAssistant ? "assistant" : "user",
         content: payload,
         createdAt: now,
       },
