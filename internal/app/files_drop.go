@@ -19,7 +19,21 @@ func registerFilesDropForward(app *application.App, win *application.WebviewWind
 			return
 		}
 		payload := FilesDroppedPayload{Paths: paths}
-		logger.Debug("files dropped", "count", len(paths))
+		if details := ctx.DropTargetDetails(); details != nil {
+			payload.X = details.X
+			payload.Y = details.Y
+			payload.ElementID = details.ElementID
+			payload.HasCoords = true
+			logger.Info("files dropped",
+				"count", len(paths),
+				"x", details.X, "y", details.Y,
+				"target", details.ElementID,
+				"paths", paths)
+		} else {
+			logger.Info("files dropped (no details)",
+				"count", len(paths),
+				"paths", paths)
+		}
 		app.Event.Emit(EventFilesDropped, payload)
 	})
 }
