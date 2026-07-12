@@ -1,4 +1,4 @@
-import { Copy, History, MoreHorizontal, Trash2 } from "lucide-react"
+import { Check, Copy, History, MoreHorizontal, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -73,14 +73,31 @@ export function ChatToolbar({
       </IconButton>
 
       {/* 复制全部 */}
-      <IconButton
-        title={copied ? "已复制" : "复制全部"}
-        onClick={handleCopyAll}
-        disabled={!hasMessages}
-        highlighted={copied}
-      >
-        <Copy className="h-3.5 w-3.5" />
-      </IconButton>
+      <div className="relative">
+        <IconButton
+          title={copied ? "已复制" : "复制全部"}
+          onClick={handleCopyAll}
+          disabled={!hasMessages}
+          highlighted={copied}
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </IconButton>
+        {copied && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={cn(
+              "pointer-events-none absolute left-1/2 top-full z-50 mt-1.5 -translate-x-1/2",
+              "flex items-center gap-1 whitespace-nowrap rounded-md",
+              "bg-foreground px-2 py-1 text-[11px] font-medium text-background shadow-md",
+              "animate-in fade-in-0 zoom-in-95 slide-in-from-top-1",
+            )}
+          >
+            <Check className="h-3 w-3" />
+            已复制到剪贴板
+          </div>
+        )}
+      </div>
 
       {/* 更多菜单 */}
       <Popover open={menuOpen} onOpenChange={setMenuOpen}>
