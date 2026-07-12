@@ -41,7 +41,7 @@ func DefaultWindow() WindowConfig {
 		Title:      "Window 1",
 		Width:      1000,
 		Height:     618,
-		Background: application.NewRGB(255, 255, 255),
+		Background: application.NewRGB(200, 200, 200),
 	}
 }
 
