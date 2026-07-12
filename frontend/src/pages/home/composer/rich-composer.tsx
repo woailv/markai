@@ -31,13 +31,6 @@ interface RichComposerProps {
   onDeleteTemplate: (id: number) => void
 }
 
-/**
- * 富文本消息输入框(Zed 风格):
- * - 文本编辑区 + 底部内嵌工具条,共享同一圆角容器
- * - 底部左侧承载模板选择器与摘要芯片,右侧发送
- * - 文件拖拽:在光标位置插入 file token,渲染为 chip
- * - Enter 发送 / Shift+Enter 换行 / IME 组合期间不触发发送
- */
 export function RichComposer({
   onSend,
   placeholder = "输入你的消息 — 拖入文件或使用模板 (Enter 发送,Shift+Enter 换行)",
@@ -69,10 +62,6 @@ export function RichComposer({
       EditorView.lineWrapping,
       placeholderExt(placeholder),
       fileChipPlugin,
-      // 拦截 CodeMirror 内建的 drop 处理:
-      // 默认行为会将拖入的文件通过 FileReader 读为文本并插入到光标位置,
-      // 这会导致"拖入文件时文件内容被塞进输入框"。此处直接接管 drop/dragover,
-      // 将文件转换为 file token chip 插入,并返回 true 阻止 CM 默认处理。
       EditorView.domEventHandlers({
         dragover(event) {
           if (event.dataTransfer?.types?.includes("Files")) {
