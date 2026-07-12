@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 
 import { ChatToolbar } from "./chat-toolbar"
 import { RichComposer } from "./composer/rich-composer"
+import { MessageContent } from "./message-content"
 import { formatRelativeTime } from "./types"
 import type { ChatMessage, Template } from "./types"
 
@@ -132,13 +133,13 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
       >
         <div
           className={cn(
-            "whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm",
+            "min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm overflow-hidden",
             isUser
               ? "rounded-tr-sm bg-primary text-primary-foreground"
               : "rounded-tl-sm border bg-background",
           )}
         >
-          {msg.content}
+          <MessageContent content={msg.content} inverted={isUser} />
         </div>
         <span className="px-1 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
           {formatRelativeTime(msg.createdAt)}
