@@ -10,64 +10,85 @@ import type { ChatMessage, Template } from "./types"
 interface ChatPanelProps {
   messages: ChatMessage[]
   onSend: (content: string) => void
-  activeTemplate: Template | null
+  templates: Template[]
+  selectedTemplateIds: Set<number>
+  onToggleTemplate: (id: number) => void
+  onCreateTemplate: () => void
+  onEditTemplate: (id: number) => void
+  onDeleteTemplate: (id: number) => void
 }
 
 export function ChatPanel({
   messages,
   onSend,
-  activeTemplate,
+  templates,
+  selectedTemplateIds,
+  onToggleTemplate,
+  onCreateTemplate,
+  onEditTemplate,
+  onDeleteTemplate,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // 自动滚动到底部
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [messages])
 
+  const selectedCount = selectedTemplateIds.size
+
   return (
-    <section className="flex h-full min-w-0 flex-1 flex-col border-r bg-background">
-      {/* Header */}
-      <div className="shrink-0 border-b px-4 py-2.5">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              会话
-            </h2>
-            <p className="truncate text-[11px] text-muted-foreground">
-              {activeTemplate
-                ? `使用模板 · ${activeTemplate.title}`
-                : "未选择模板"}
-            </p>
-          </div>
+    <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      {/* Header - 极简 */}
+      <div className="shrink-0 border-b px-4 py-2">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            会话
+            {selectedCount > 0 && (
+              <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                {selectedCount} 模板
+              </span>
+            )}
+          </h2>
           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
             {messages.length} 条
           </span>
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Messages - 全宽居中 */}
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4"
       >
-        {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="max-w-xs text-center text-sm text-muted-foreground">
-              开始你的第一次对话
+        <div className="mx-auto w-full max-w-3xl space-y-4">
+          {messages.length === 0 ? (
+            <div className="flex h-full items-center justify-center py-16">
+              <div className="max-w-xs text-center text-sm text-muted-foreground">
+                开始你的第一次对话
+              </div>
             </div>
-          </div>
-        ) : (
-          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
-        )}
+          ) : (
+            messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+          )}
+        </div>
       </div>
 
       {/* Composer */}
-      <div className="shrink-0 border-t bg-background/50 p-3">
-        <RichComposer onSend={onSend} />
+      <div className="shrink-0 border-t bg-background/50 px-4 py-3">
+        <div className="mx-auto w-full max-w-3xl">
+          <RichComposer
+            onSend={onSend}
+            templates={templates}
+            selectedTemplateIds={selectedTemplateIds}
+            onToggleTemplate={onToggleTemplate}
+            onCreateTemplate={onCreateTemplate}
+            onEditTemplate={onEditTemplate}
+            onDeleteTemplate={onDeleteTemplate}
+          />
+        </div>
       </div>
     </section>
   )

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
@@ -6,33 +6,33 @@ import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 
 import { ChatPanel } from "./chat-panel"
 import { MOCK_MESSAGES } from "./mock-data"
-import { TemplateDetail } from "./template-detail"
-import { TemplateList } from "./template-list"
 import type { ChatMessage, Template } from "./types"
 
 export default function HomePage() {
   const navigate = useNavigate()
   const [templates, setTemplates] = useState<Template[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(
+    new Set(),
+  )
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES)
 
   const loadTemplates = useCallback(async () => {
     const list = (await PromptTemplateService.List()) ?? []
     setTemplates(list)
-    setSelectedId((prev) => {
-      if (prev !== null && list.some((t) => t.id === prev)) return prev
-      return list[0]?.id ?? null
+    // 保留仍存在的已选 id,过滤掉已被删除的
+    setSelectedTemplateIds((prev) => {
+      const existing = new Set(list.map((t) => t.id))
+      const next = new Set<number>()
+      prev.forEach((id) => {
+        if (existing.has(id)) next.add(id)
+      })
+      return next.size === prev.size ? prev : next
     })
   }, [])
 
   useEffect(() => {
     void loadTemplates()
   }, [loadTemplates])
-
-  const selectedTemplate = useMemo(
-    () => templates.find((t) => t.id === selectedId) ?? null,
-    [templates, selectedId]
-  )
 
   const handleSend = (content: string) => {
     const now = new Date().toISOString()
@@ -47,36 +47,39 @@ export default function HomePage() {
     ])
   }
 
-  const handleCreate = () => {
+  const handleToggleTemplate = (id: number) => {
+    setSelectedTemplateIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleCreateTemplate = () => {
     navigate(ROUTE_PATHS.TEMPLATE_NEW)
   }
 
-  const handleEdit = (id: number) => {
+  const handleEditTemplate = (id: number) => {
     navigate(buildTemplateEditPath(id))
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDeleteTemplate = async (id: number) => {
     await PromptTemplateService.Delete(id)
     await loadTemplates()
   }
 
   return (
     <div className="flex h-svh overflow-hidden">
-      <TemplateList
-        templates={templates}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onCreate={handleCreate}
-      />
       <ChatPanel
         messages={messages}
         onSend={handleSend}
-        activeTemplate={selectedTemplate}
-      />
-      <TemplateDetail
-        template={selectedTemplate}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
+        templates={templates}
+        selectedTemplateIds={selectedTemplateIds}
+        onToggleTemplate={handleToggleTemplate}
+        onCreateTemplate={handleCreateTemplate}
+        onEditTemplate={handleEditTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
       />
     </div>
   )

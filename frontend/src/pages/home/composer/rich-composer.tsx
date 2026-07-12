@@ -1,7 +1,6 @@
 import { EditorView, keymap, placeholder as placeholderExt } from "@codemirror/view"
 import { EditorState, Prec } from "@codemirror/state"
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror"
-import { Send } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -11,29 +10,43 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react"
 
-import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+import { ComposerToolbar } from "./composer-toolbar"
 import {
   documentToPlainText,
   encodeFileToken,
   fileChipPlugin,
 } from "./file-token"
+import type { Template } from "../types"
 
 interface RichComposerProps {
   onSend: (plain: string) => void
   placeholder?: string
+  templates: Template[]
+  selectedTemplateIds: Set<number>
+  onToggleTemplate: (id: number) => void
+  onCreateTemplate: () => void
+  onEditTemplate: (id: number) => void
+  onDeleteTemplate: (id: number) => void
 }
 
 /**
- * 富文本消息输入框。
- * - 基于 CodeMirror 实现,支持自动增高。
- * - 文件拖拽:在光标位置插入 file token,渲染为 chip(只显示 basename)。
- * - Enter 发送 / Shift+Enter 换行 / IME 组合期间不触发发送。
+ * 富文本消息输入框(Zed 风格):
+ * - 文本编辑区 + 底部内嵌工具条,共享同一圆角容器
+ * - 底部左侧承载模板选择器与摘要芯片,右侧发送
+ * - 文件拖拽:在光标位置插入 file token,渲染为 chip
+ * - Enter 发送 / Shift+Enter 换行 / IME 组合期间不触发发送
  */
 export function RichComposer({
   onSend,
-  placeholder = "输入消息... (Enter 发送,Shift+Enter 换行,可拖入文件)",
+  placeholder = "输入你的消息 — 拖入文件或使用模板 (Enter 发送,Shift+Enter 换行)",
+  templates,
+  selectedTemplateIds,
+  onToggleTemplate,
+  onCreateTemplate,
+  onEditTemplate,
+  onDeleteTemplate,
 }: RichComposerProps) {
   const [doc, setDoc] = useState("")
   const [isDragOver, setIsDragOver] = useState(false)
@@ -46,7 +59,6 @@ export function RichComposer({
     setDoc("")
   }, [doc, onSend])
 
-  // 使用 ref 承载最新 send,避免 keymap 依赖变化重建 extensions
   const sendRef = useRef(send)
   useEffect(() => {
     sendRef.current = send
@@ -57,7 +69,6 @@ export function RichComposer({
       EditorView.lineWrapping,
       placeholderExt(placeholder),
       fileChipPlugin,
-      // 高优先级捕获 Enter,IME 组合期间不发送
       Prec.highest(
         keymap.of([
           {
@@ -109,7 +120,6 @@ export function RichComposer({
     [placeholder],
   )
 
-  /** 在光标位置插入 file token(处理多路径) */
   const insertFilesAtCursor = useCallback((paths: string[]) => {
     const view = cmRef.current?.view
     if (!view || paths.length === 0) return
@@ -123,7 +133,6 @@ export function RichComposer({
     view.focus()
   }, [])
 
-  /** 从光标坐标定位到 doc 位置后再插入 */
   const insertFilesAtCoords = useCallback(
     (paths: string[], clientX: number, clientY: number) => {
       const view = cmRef.current?.view
@@ -150,7 +159,6 @@ export function RichComposer({
   }
 
   const handleDragLeave = (e: ReactDragEvent<HTMLDivElement>) => {
-    // 仅当离开根容器时关闭
     if (e.currentTarget === e.target) setIsDragOver(false)
   }
 
@@ -161,11 +169,9 @@ export function RichComposer({
     e.preventDefault()
     e.stopPropagation()
 
-    // 浏览器 File 对象一般拿不到绝对路径,尝试 (file as any).path (Wails/Electron 等宿主注入)
     const paths: string[] = []
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
-      // 优先使用宿主注入的 path 字段
       const p = (f as unknown as { path?: string }).path ?? f.name
       if (p) paths.push(p)
     }
@@ -174,7 +180,6 @@ export function RichComposer({
     }
   }
 
-  // 监听 Wails 事件 "files:dropped" (在 App 层桥接后触发)
   useEffect(() => {
     const handler = (evt: Event) => {
       const detail = (evt as CustomEvent<{ paths: string[] }>).detail
@@ -197,45 +202,48 @@ export function RichComposer({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex flex-col gap-2 rounded-lg border bg-background p-2 transition-colors",
+        "flex flex-col rounded-xl border bg-background transition-colors",
         "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring/30",
         isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
       )}
     >
-      <CodeMirror
-        ref={cmRef}
-        value={doc}
-        onChange={setDoc}
-        extensions={extensions}
-        basicSetup={{
-          lineNumbers: false,
-          foldGutter: false,
-          highlightActiveLine: false,
-          highlightActiveLineGutter: false,
-          dropCursor: true,
-          indentOnInput: false,
-          bracketMatching: false,
-          autocompletion: false,
-          searchKeymap: false,
-          defaultKeymap: true,
-        }}
-        theme="none"
-        className="w-full"
-      />
-      <div className="flex items-center justify-between gap-2">
-        <span className="pl-1 text-[10px] text-muted-foreground">
-          {isDragOver ? "松开以插入文件路径" : "支持拖入文件"}
-        </span>
-        <Button
-          type="button"
-          size="sm"
-          disabled={!canSend}
-          onClick={send}
-          className="h-7 gap-1 px-3"
-        >
-          <Send className="h-3 w-3" />
-          发送
-        </Button>
+      {/* 文本编辑区 */}
+      <div className="px-2 pt-1.5">
+        <CodeMirror
+          ref={cmRef}
+          value={doc}
+          onChange={setDoc}
+          extensions={extensions}
+          basicSetup={{
+            lineNumbers: false,
+            foldGutter: false,
+            highlightActiveLine: false,
+            highlightActiveLineGutter: false,
+            dropCursor: true,
+            indentOnInput: false,
+            bracketMatching: false,
+            autocompletion: false,
+            searchKeymap: false,
+            defaultKeymap: true,
+          }}
+          theme="none"
+          className="w-full"
+        />
+      </div>
+
+      {/* 内嵌工具条 */}
+      <div className="px-2 pb-1.5 pt-1">
+        <ComposerToolbar
+          templates={templates}
+          selectedIds={selectedTemplateIds}
+          onToggleTemplate={onToggleTemplate}
+          onCreateTemplate={onCreateTemplate}
+          onEditTemplate={onEditTemplate}
+          onDeleteTemplate={onDeleteTemplate}
+          isDragOver={isDragOver}
+          canSend={canSend}
+          onSend={send}
+        />
       </div>
     </div>
   )
