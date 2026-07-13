@@ -17,6 +17,10 @@ import { cn } from "@/lib/utils"
 
 import { ChatToolbar } from "./chat-toolbar"
 import { RichComposer } from "./composer/rich-composer"
+import {
+  buildFilesContext,
+  extractFilePathsFromMessages,
+} from "./file-context"
 import { MessageContent } from "./message-content"
 import { formatRelativeTime } from "./types"
 import type { ChatMessage, Template } from "./types"
@@ -169,10 +173,13 @@ function MessageBubble({
 
   const handleCopy = async () => {
     try {
-      const plain = documentToPlainText(msg.content)
-      const text =
-        typeof plain === "string" ? plain : String(plain ?? "")
-      await navigator.clipboard.writeText(text)
+      // 与头部工具栏保持一致:使用消息原始内容(含 file token),
+      // 解析文件路径并将 <files>...</files> 上下文置于消息之前。
+      const header = `**${isUser ? "User" : "Assistant"}**:\n\n${msg.content}`
+      const paths = extractFilePathsFromMessages([msg.content])
+      const filesContext = await buildFilesContext(paths)
+      const finalText = filesContext ? `${filesContext}\n\n${header}` : header
+      await navigator.clipboard.writeText(finalText)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
     } catch {
@@ -233,7 +240,7 @@ function MessageBubble({
       >
         <div
           className={cn(
-            "group/content relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
+            "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
             isUser
               ? cn(
                   "bg-primary/95 text-primary-foreground",
@@ -260,7 +267,7 @@ function MessageBubble({
           {!editing && typeof msg.id === "number" && (
             <div
               className={cn(
-                "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover/content:opacity-100",
+                "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
                 isUser ? "right-full mr-2" : "left-full ml-2",
               )}
             >
