@@ -59,7 +59,7 @@ export function ChatPanel({
     if (!el || !stickToBottomRef.current) return
     // 用 rAF 确保 DOM 尺寸已更新
     requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+      el.scrollTop = el.scrollHeight
     })
   }, [messages])
 
