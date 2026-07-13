@@ -1,4 +1,4 @@
-import { Check, Copy, History, Loader2, MoreHorizontal, Trash2 } from "lucide-react"
+import { Check, Copy, History, Loader2, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -29,7 +29,6 @@ export function ChatToolbar({
 }: ChatToolbarProps) {
   const [copied, setCopied] = useState(false)
   const [copying, setCopying] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const hasMessages = messages.length > 0
@@ -71,7 +70,6 @@ export function ChatToolbar({
   }
 
   const handleClearClick = () => {
-    setMenuOpen(false)
     setConfirmOpen(true)
   }
 
@@ -128,37 +126,14 @@ export function ChatToolbar({
         )}
       </div>
 
-      {/* 更多菜单 */}
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              title="更多"
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </Button>
-          }
-        />
-        <PopoverContent align="end" className="w-40 p-1">
-          <button
-            type="button"
-            onClick={handleClearClick}
-            disabled={!hasMessages}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm",
-              "text-destructive hover:bg-destructive/10",
-              "disabled:pointer-events-none disabled:opacity-50",
-            )}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            清空会话
-          </button>
-        </PopoverContent>
-      </Popover>
+      {/* 清空会话 */}
+      <IconButton
+        title="清空会话"
+        onClick={handleClearClick}
+        disabled={!hasMessages}
+      >
+        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      </IconButton>
 
       {/* 清空确认弹窗 */}
       <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
