@@ -15,7 +15,8 @@ import type { Template } from "./types"
 import { buildTemplatePreview } from "./utils"
 
 /**
- * 将若干消息内容中的模板 token 展开为一段前置的 <templates>...</templates> 上下文块。
+ * 将若干消息内容中的模板 token 展开为一段前置的模板上下文文本。
+ * 多个模板之间以分隔线连接,不再包裹在 <templates>...</templates> 中。
  * 若没有 token 或无法解析到任何模板,返回空串。
  */
 export function buildTemplatesContext(
@@ -42,5 +43,5 @@ export function buildTemplatesContext(
   }
 
   if (blocks.length === 0) return ""
-  return `<templates>\n${blocks.join("\n\n---\n\n")}\n</templates>`
+  return blocks.join("\n\n---\n\n")
 }
