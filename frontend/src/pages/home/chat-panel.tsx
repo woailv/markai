@@ -79,6 +79,83 @@ export function ChatPanel({
     })
   }, [messages])
 
+  // 拖拽选择文本时,靠近容器上/下边缘自动滚动,
+  // 解决"选择到底部时不能继续向下选择"的问题。
+  // 原生浏览器只在滚动主视口边缘时自动滚动,嵌套滚动容器需要手动实现。
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const EDGE = 40 // 触发自动滚动的边缘阈值 (px)
+    const MAX_SPEED = 24 // 每帧最大滚动像素
+
+    let selecting = false
+    let pointerY = 0
+    let rafId = 0
+
+    const step = () => {
+      if (!selecting) {
+        rafId = 0
+        return
+      }
+      const rect = el.getBoundingClientRect()
+      const distTop = pointerY - rect.top
+      const distBottom = rect.bottom - pointerY
+      let delta = 0
+      if (distTop < EDGE && distTop < distBottom) {
+        // 越靠近边缘,速度越大
+        const ratio = Math.max(0, Math.min(1, 1 - distTop / EDGE))
+        delta = -Math.ceil(MAX_SPEED * ratio)
+      } else if (distBottom < EDGE) {
+        const ratio = Math.max(0, Math.min(1, 1 - distBottom / EDGE))
+        delta = Math.ceil(MAX_SPEED * ratio)
+      }
+      if (delta !== 0) {
+        el.scrollTop += delta
+      }
+      rafId = requestAnimationFrame(step)
+    }
+
+    const onMouseDown = (e: MouseEvent) => {
+      // 仅左键触发
+      if (e.button !== 0) return
+      selecting = true
+      pointerY = e.clientY
+      if (!rafId) rafId = requestAnimationFrame(step)
+    }
+
+    const onMouseMove = (e: MouseEvent) => {
+      if (!selecting) return
+      pointerY = e.clientY
+      // 无按键(用户已在容器外释放)则终止
+      if (e.buttons === 0) {
+        selecting = false
+      }
+    }
+
+    const stop = () => {
+      selecting = false
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+        rafId = 0
+      }
+    }
+
+    el.addEventListener("mousedown", onMouseDown)
+    // 监听 window 以便鼠标移出容器/窗口时仍能捕获
+    window.addEventListener("mousemove", onMouseMove)
+    window.addEventListener("mouseup", stop)
+    window.addEventListener("blur", stop)
+
+    return () => {
+      el.removeEventListener("mousedown", onMouseDown)
+      window.removeEventListener("mousemove", onMouseMove)
+      window.removeEventListener("mouseup", stop)
+      window.removeEventListener("blur", stop)
+      if (rafId) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
   const selectedCount = selectedTemplateIds.size
 
   return (
