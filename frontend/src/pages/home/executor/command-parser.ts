@@ -142,14 +142,22 @@ function extractCodeFence(body: string): string {
 /**
  * 解析 EDIT_FILE 正文中的多个 SEARCH/REPLACE 块。
  * 允许它们被单个 ``` 围栏包裹,或散落多个围栏。
+ *
+ * 健壮性要点:
+ * - 先把 CRLF 归一为 LF,避免 AI 输出与文件混合换行时 SEARCH 内容尾部带 \r
+ * - 分隔符行允许行尾有额外空白(部分模型会补空格),但字符数严格要求 7 个
+ * - SEARCH / REPLACE 段允许为空(用于纯新增或纯删除)
+ * - REPLACE 结尾允许缺少换行(紧贴 `>>>>>>> REPLACE` 之前)
  */
 function parseSearchReplaceBlocks(body: string): SearchReplaceBlock[] {
+    const normalized = body.replace(/\r\n/g, "\n")
     const blocks: SearchReplaceBlock[] = []
-    // 允许围栏与不带围栏两种写法,统一在原始正文上扫 SR 标记
+    // 分隔符必须独占一行(前面是行首或换行,后面是行尾空白+换行),
+    // 但段内容允许为空、允许尾部无换行(REPLACE 段用 (?=\s|$) 收尾)。
     const re =
-        /<{7}\s*SEARCH\s*\n([\s\S]*?)\n={7}\s*\n([\s\S]*?)\n>{7}\s*REPLACE/g
+        /<{7}[ \t]*SEARCH[ \t]*\n([\s\S]*?)\n={7}[ \t]*\n([\s\S]*?)\n?>{7}[ \t]*REPLACE(?=\s|$)/g
     let m: RegExpExecArray | null
-    while ((m = re.exec(body))) {
+    while ((m = re.exec(normalized))) {
         blocks.push({ search: m[1], replace: m[2] })
     }
     return blocks

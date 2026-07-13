@@ -139,6 +139,8 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
           durationMs: 0,
         }
       }
+      // 记录原始换行风格,回写时保持一致,避免整文件 diff 噪音
+      const originalUsesCRLF = /\r\n/.test(readRes.content)
       const applied = applyEdits(readRes.content, cmd)
       if (!applied.ok) {
         return {
@@ -150,7 +152,10 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
           durationMs: 0,
         }
       }
-      await FileService.Write({ path: cmd.path, content: applied.content })
+      const finalContent = originalUsesCRLF
+        ? applied.content.replace(/\r?\n/g, "\r\n")
+        : applied.content
+      await FileService.Write({ path: cmd.path, content: finalContent })
       return {
         kind: cmd.kind,
         status: "success",
@@ -265,8 +270,11 @@ async function tryRead(path: string): Promise<string | null> {
 /**
  * 依次应用 SEARCH/REPLACE 块。
  * 规则:
- *   - SEARCH 必须在当前文本中出现且仅出现一次
+ *   - 匹配前将文件与 SEARCH/REPLACE 统一归一为 LF,消除 CRLF 与 SEARCH 内容尾部 \r 的差异
+ *   - SEARCH 必须在当前(归一后)文本中出现且仅出现一次
  *   - 空 SEARCH 视为在文件末尾追加 REPLACE
+ *   - 精确匹配失败时,自动尝试"忽略每行行尾空白"的宽松匹配作为兜底,
+ *     并在最终失败时输出 SEARCH 首行与文件片段,便于诊断
  */
 function applyEdits(
   original: string,
@@ -274,31 +282,108 @@ function applyEdits(
 ):
   | { ok: true; content: string }
   | { ok: false; failedAt: number; reason: string } {
-  let content = original
+  let content = normalizeNewlines(original)
   for (let i = 0; i < cmd.edits.length; i++) {
-    const { search, replace } = cmd.edits[i]
+    const search = normalizeNewlines(cmd.edits[i].search)
+    const replace = normalizeNewlines(cmd.edits[i].replace)
+
     if (search === "") {
-      content = content + replace
+      // 追加时确保与原文件之间至少有一个换行分隔
+      const sep = content.length > 0 && !content.endsWith("\n") ? "\n" : ""
+      content = content + sep + replace
       continue
     }
+
     const first = content.indexOf(search)
-    if (first === -1) {
-      return {
-        ok: false,
-        failedAt: i,
-        reason: "SEARCH 块未在文件中找到精确匹配",
+    if (first !== -1) {
+      const second = content.indexOf(search, first + search.length)
+      if (second !== -1) {
+        return {
+          ok: false,
+          failedAt: i,
+          reason:
+            "SEARCH 块在文件中出现多次,请补充上下文以保证唯一性\n\n" +
+            renderSearchSnippet(search),
+        }
       }
+      content =
+        content.slice(0, first) +
+        replace +
+        content.slice(first + search.length)
+      continue
     }
-    const second = content.indexOf(search, first + search.length)
-    if (second !== -1) {
-      return {
-        ok: false,
-        failedAt: i,
-        reason: "SEARCH 块在文件中出现多次,请补充上下文以保证唯一性",
-      }
+
+    // 兜底:忽略行尾空白后再试一次
+    const lenient = findLenient(content, search)
+    if (lenient) {
+      content =
+        content.slice(0, lenient.start) +
+        replace +
+        content.slice(lenient.end)
+      continue
     }
-    content =
-      content.slice(0, first) + replace + content.slice(first + search.length)
+
+    return {
+      ok: false,
+      failedAt: i,
+      reason:
+        "SEARCH 块未在文件中找到精确匹配。可能原因:缩进/空白差异、行尾空白、内容漂移。\n\n" +
+        renderSearchSnippet(search),
+    }
   }
   return { ok: true, content }
+}
+
+/** 统一换行为 LF,消除 CRLF / CR 混用带来的匹配失败 */
+function normalizeNewlines(s: string): string {
+  return s.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+}
+
+/**
+ * 宽松匹配:将 haystack 与 needle 按行拆分,逐行以 rtrim 后比较。
+ * 命中时返回在原始 haystack 中的字节区间。
+ */
+function findLenient(
+  haystack: string,
+  needle: string,
+): { start: number; end: number } | null {
+  const hayLines = haystack.split("\n")
+  const needleLines = needle.split("\n")
+  if (needleLines.length === 0) return null
+
+  const rtrim = (s: string) => s.replace(/[ \t]+$/, "")
+  const nTrimmed = needleLines.map(rtrim)
+
+  let matchedAt = -1
+  for (let i = 0; i + needleLines.length <= hayLines.length; i++) {
+    let ok = true
+    for (let j = 0; j < needleLines.length; j++) {
+      if (rtrim(hayLines[i + j]) !== nTrimmed[j]) {
+        ok = false
+        break
+      }
+    }
+    if (ok) {
+      if (matchedAt !== -1) return null // 多处命中,拒绝
+      matchedAt = i
+    }
+  }
+  if (matchedAt === -1) return null
+
+  // 计算原始字符区间:前 matchedAt 行 + 每行的换行符
+  let start = 0
+  for (let k = 0; k < matchedAt; k++) start += hayLines[k].length + 1
+  let end = start
+  for (let k = 0; k < needleLines.length; k++) {
+    end += hayLines[matchedAt + k].length
+    if (k < needleLines.length - 1) end += 1 // 换行符
+  }
+  return { start, end }
+}
+
+/** 截取 SEARCH 前几行用于错误提示,超长内容折叠 */
+function renderSearchSnippet(search: string): string {
+  const lines = search.split("\n").slice(0, 6)
+  const suffix = search.split("\n").length > 6 ? "\n…(已截断)" : ""
+  return `SEARCH 首几行:\n${lines.map((l) => "> " + l).join("\n")}${suffix}`
 }
