@@ -97,15 +97,6 @@ export function ChatToolbar({
         {messages.length} 条
       </span>
 
-      {/* 历史会话 */}
-      <IconButton
-        title="历史会话"
-        onClick={onOpenHistory}
-        disabled={!onOpenHistory}
-      >
-        <History className="h-3.5 w-3.5" />
-      </IconButton>
-
       {/* 复制全部 */}
       <div className="relative">
         <IconButton
@@ -146,6 +137,15 @@ export function ChatToolbar({
         disabled={!hasMessages}
       >
         <Trash2 className="h-3.5 w-3.5 text-destructive" />
+      </IconButton>
+
+      {/* 历史会话 */}
+      <IconButton
+        title="历史会话"
+        onClick={onOpenHistory}
+        disabled={!onOpenHistory}
+      >
+        <History className="h-3.5 w-3.5" />
       </IconButton>
 
       {/* 清空确认弹窗 */}

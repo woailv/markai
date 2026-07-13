@@ -7,7 +7,6 @@ import {
   Copy,
   MessagesSquare,
   Pencil,
-  Sparkles,
   Trash2,
   User,
   X,
@@ -53,6 +52,7 @@ interface ChatPanelProps {
   onCreateTemplate: () => void
   onEditTemplate: (id: number) => void
   onDeleteTemplate: (id: number) => void
+  conversationTitle?: string
 }
 
 export function ChatPanel({
@@ -68,6 +68,7 @@ export function ChatPanel({
   onCreateTemplate,
   onEditTemplate,
   onDeleteTemplate,
+  conversationTitle,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -164,20 +165,15 @@ export function ChatPanel({
     }
   }, [])
 
-  const selectedCount = selectedTemplateIds.size
-
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       <div className="shrink-0 border-b px-4 py-2">
         <div className="flex w-full items-center justify-between gap-3">
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            会话
-            {selectedCount > 0 && (
-              <span className="ml-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                {selectedCount} 模板
-              </span>
-            )}
+          <h2
+            className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight"
+            title={conversationTitle || "新会话"}
+          >
+            {conversationTitle || "新会话"}
           </h2>
           <ChatToolbar
             messages={messages}

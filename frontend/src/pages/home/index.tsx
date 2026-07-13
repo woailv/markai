@@ -341,19 +341,11 @@ export default function HomePage() {
     }
   }
 
+  const activeTitle =
+    conversations.find((c) => c.id === activeConvId)?.title || ""
+
   return (
     <div className="flex h-svh overflow-hidden">
-      {sidebarOpen && (
-        <HistorySidebar
-          conversations={conversations}
-          activeId={activeConvId}
-          onSelect={handleSelectConversation}
-          onNew={handleNewConversation}
-          onDelete={handleDeleteConversation}
-          onRename={handleRenameConversation}
-          onClearAll={handleClearAllConversations}
-        />
-      )}
       <ChatPanel
         messages={messages}
         onSend={handleSend}
@@ -367,7 +359,19 @@ export default function HomePage() {
         onCreateTemplate={handleCreateTemplate}
         onEditTemplate={handleEditTemplate}
         onDeleteTemplate={handleDeleteTemplate}
+        conversationTitle={activeTitle}
       />
+      {sidebarOpen && (
+        <HistorySidebar
+          conversations={conversations}
+          activeId={activeConvId}
+          onSelect={handleSelectConversation}
+          onNew={handleNewConversation}
+          onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
+          onClearAll={handleClearAllConversations}
+        />
+      )}
       <ConfirmDialogHost />
     </div>
   )

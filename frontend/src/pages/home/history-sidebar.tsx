@@ -24,7 +24,7 @@ export function HistorySidebar({
   onRename,
 }: HistorySidebarProps) {
   return (
-    <div className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/20">
+    <div className="flex h-full w-64 shrink-0 flex-col border-l bg-muted/20">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <span className="text-sm font-semibold">历史会话</span>
         <div className="flex items-center gap-1">
