@@ -266,9 +266,10 @@ export default function HomePage() {
 
   const handleClear = async () => {
     if (activeConvId) {
-      await ConversationService.Delete(activeConvId)
+      // 仅清空消息，保留会话与已绑定模板
+      await ConversationService.ClearMessages(activeConvId)
       await loadConversations()
-      handleNewConversation()
+      setMessages([])
     } else {
       setMessages([])
     }

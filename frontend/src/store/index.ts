@@ -6,3 +6,6 @@ export type { PromptStore } from "./prompt.store"
 
 export { useConversationStore } from "./conversation.store"
 export type { ConversationStore } from "./conversation.store"
+
+export { useDraftStore } from "./draft.store"
+export type { DraftStore } from "./draft.store"

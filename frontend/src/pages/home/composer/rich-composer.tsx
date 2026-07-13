@@ -12,6 +12,7 @@ import {
 } from "react"
 
 import { cn } from "@/lib/utils"
+import { useDraftStore } from "@/store"
 
 import { ComposerToolbar } from "./composer-toolbar"
 import {
@@ -42,16 +43,30 @@ export function RichComposer({
   onEditTemplate,
   onDeleteTemplate,
 }: RichComposerProps) {
-  const [doc, setDoc] = useState("")
+  // 初始值取自持久化的草稿(全局单份);刷新/重启后可恢复
+  const setDraft = useDraftStore((s) => s.setDraft)
+  const clearDraft = useDraftStore((s) => s.clearDraft)
+
+  const [doc, setDoc] = useState<string>(() => {
+    const draft = useDraftStore.getState().getDraft()
+    return typeof draft === "string" ? draft : String(draft ?? "")
+  })
   const [isDragOver, setIsDragOver] = useState(false)
   const cmRef = useRef<ReactCodeMirrorRef>(null)
 
+  // 内容变化时,写入草稿存储(持久化到 localStorage)
+  useEffect(() => {
+    setDraft(doc)
+  }, [doc, setDraft])
+
   const send = useCallback(() => {
-    const plain = documentToPlainText(doc).trim()
+    const res = documentToPlainText(doc);
+    const plain = (typeof res === "string" ? res : String(res ?? "")).trim();
     if (!plain) return
     onSend(plain)
     setDoc("")
-  }, [doc, onSend])
+    clearDraft()
+  }, [doc, onSend, clearDraft])
 
   const sendRef = useRef(send)
   useEffect(() => {
@@ -198,7 +213,8 @@ export function RichComposer({
     }
   }, [insertFilesAtCoords, insertFilesAtCursor])
 
-  const canSend = documentToPlainText(doc).trim().length > 0
+  const rawPlain = documentToPlainText(doc);
+  const canSend = (typeof rawPlain === "string" ? rawPlain : String(rawPlain ?? "")).trim().length > 0
 
   return (
     <div
@@ -217,7 +233,7 @@ export function RichComposer({
       <div className="px-2 pt-1.5">
         <CodeMirror
           ref={cmRef}
-          value={doc}
+          value={typeof doc === "string" ? doc : String(doc ?? "")}
           onChange={setDoc}
           extensions={extensions}
           basicSetup={{
