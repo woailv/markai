@@ -158,12 +158,17 @@ async function runOne(cmd: ParsedCommand, batchId?: number): Promise<ExecResultB
       const finalContent = originalUsesCRLF
         ? applied.content.replace(/\r?\n/g, "\r\n")
         : applied.content
-      await FileService.Write({ path: cmd.path, content: finalContent, batchId })
+      const writeRes = await FileService.Write({
+        path: cmd.path,
+        content: finalContent,
+        batchId,
+      })
       return {
         kind: cmd.kind,
         status: "success",
         summary: `应用 ${cmd.edits.length} 处编辑`,
         path: cmd.path,
+        detail: writeRes?.diff,
         durationMs: 0,
       }
     }
