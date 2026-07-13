@@ -15,7 +15,6 @@ import {
   encodeExecReport,
   encodeExecStatus,
 } from "./executor/execution-report"
-import { MOCK_MESSAGES } from "./mock-data"
 import type { ChatMessage, Template } from "./types"
 import { buildTemplatePreview } from "./utils"
 
@@ -25,7 +24,7 @@ export default function HomePage() {
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(
     new Set(),
   )
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
 
   const loadTemplates = useCallback(async () => {
     const list = (await PromptTemplateService.List()) ?? []
