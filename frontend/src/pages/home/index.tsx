@@ -5,6 +5,13 @@ import { PromptTemplateService } from "@/../bindings/prompttool/internal/service
 import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 
 import { ChatPanel } from "./chat-panel"
+import { executeCommands } from "./executor/command-executor"
+import { parseCommands } from "./executor/command-parser"
+import { ConfirmDialogHost } from "./executor/confirm-dialog"
+import {
+  encodeExecReport,
+  encodeExecStatus,
+} from "./executor/execution-report"
 import { MOCK_MESSAGES } from "./mock-data"
 import type { ChatMessage, Template } from "./types"
 import { buildTemplatePreview } from "./utils"
@@ -41,7 +48,7 @@ export default function HomePage() {
 
   const handleSend = (content: string) => {
     const now = new Date().toISOString()
-    
+
     // 若匹配到指令标签，视为 AI 发送的消息
     const isAssistant = COMMAND_TAG_RE.test(content)
     let payload = content
@@ -63,16 +70,56 @@ export default function HomePage() {
       }
     }
 
+    const messageId = `${isAssistant ? "a" : "u"}-${Date.now()}`
     setMessages((prev) => [
       ...prev,
       {
-        id: `${isAssistant ? "a" : "u"}-${prev.length + 1}-${Date.now()}`,
+        id: messageId,
         role: isAssistant ? "assistant" : "user",
         content: payload,
         createdAt: now,
       },
     ])
+
+    if (isAssistant) {
+      void runCommandPipeline(payload)
+    }
     // 注意:发送后保留模板选中状态,便于连续对话复用。
+  }
+
+  /**
+   * 解析 AI 消息中的指令 → 追加执行中占位 → 顺序执行 → 用结构化回执替换占位。
+   * 若消息中未包含可解析指令,不追加任何回执,保持消息本身可见。
+   */
+  const runCommandPipeline = async (content: string) => {
+    const items = parseCommands(content)
+    if (items.length === 0) return
+
+    const statusId = `exec-${Date.now()}`
+    const now = new Date().toISOString()
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: statusId,
+        role: "assistant",
+        content: encodeExecStatus(items.length),
+        createdAt: now,
+      },
+    ])
+
+    const report = await executeCommands(items)
+
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === statusId
+          ? {
+              ...m,
+              content: encodeExecReport(report),
+              createdAt: new Date().toISOString(),
+            }
+          : m,
+      ),
+    )
   }
 
   const handleClear = () => {
@@ -114,6 +161,7 @@ export default function HomePage() {
         onEditTemplate={handleEditTemplate}
         onDeleteTemplate={handleDeleteTemplate}
       />
+      <ConfirmDialogHost />
     </div>
   )
 }

@@ -11,6 +11,11 @@ import {
   readOnlyFileChipPlugin,
   readOnlyInvertedFileChipPlugin,
 } from "./composer/file-token"
+import {
+  decodeExecPayload,
+  ExecReportView,
+  ExecStatusView,
+} from "./executor/execution-report"
 
 interface MessageContentProps {
   content: string
@@ -97,6 +102,15 @@ export function MessageContent({
   content,
   inverted = false,
 }: MessageContentProps) {
+  // 执行状态 / 回执消息:短路走结构化组件,不进入 CodeMirror 渲染
+  const execPayload = decodeExecPayload(content)
+  if (execPayload?.type === "status" && execPayload.status) {
+    return <ExecStatusView pending={execPayload.status.pending} />
+  }
+  if (execPayload?.type === "report" && execPayload.report) {
+    return <ExecReportView report={execPayload.report} />
+  }
+
   const hostRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const themeCompartment = useRef(new Compartment())

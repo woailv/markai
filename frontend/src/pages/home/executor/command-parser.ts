@@ -1,0 +1,213 @@
+/**
+ * AI 指令解析器
+ *
+ * 从消息文本中提取 XML 风格的文件操作指令。
+ * 支持的标签(与 index.tsx 中 COMMAND_TAG_RE 一致):
+ *   - <WRITE_FILE path="ABS">...```lang\n代码\n```...</WRITE_FILE>
+ *   - <EDIT_FILE path="ABS">
+ *       多个:
+ *       ```lang
+ *       <<<<<<< SEARCH
+ *       ...
+ *       =======
+ *       ...
+ *       >>>>>>> REPLACE
+ *       ```
+ *     </EDIT_FILE>
+ *   - <DELETE_FILE path="ABS"/>
+ *   - <MOVE_PATH source_path="ABS" destination_path="ABS"/>
+ *   - <CREATE_DIRECTORY path="ABS"/>
+ *   - <REQUEST_DIRECTORY_LIST path="ABS"/>
+ *   - <REQUEST_FILE path="ABS"/>
+ *
+ * 解析策略:
+ *   - 使用带 tagName 捕获的整体正则,一次扫描,严格按出现顺序返回。
+ *   - 自闭合(尾部 `/>`)与开合对(`>...</TAG>`)统一处理。
+ *   - WRITE_FILE / EDIT_FILE 的正文再走各自的次级解析。
+ */
+
+export type CommandKind =
+    | "WRITE_FILE"
+    | "EDIT_FILE"
+    | "DELETE_FILE"
+    | "MOVE_PATH"
+    | "CREATE_DIRECTORY"
+    | "REQUEST_DIRECTORY_LIST"
+    | "REQUEST_FILE"
+
+export interface SearchReplaceBlock {
+    search: string
+    replace: string
+}
+
+export interface WriteFileCommand {
+    kind: "WRITE_FILE"
+    path: string
+    content: string
+}
+
+export interface EditFileCommand {
+    kind: "EDIT_FILE"
+    path: string
+    edits: SearchReplaceBlock[]
+}
+
+export interface DeleteFileCommand {
+    kind: "DELETE_FILE"
+    path: string
+}
+
+export interface MovePathCommand {
+    kind: "MOVE_PATH"
+    source: string
+    destination: string
+}
+
+export interface CreateDirectoryCommand {
+    kind: "CREATE_DIRECTORY"
+    path: string
+}
+
+export interface RequestDirectoryListCommand {
+    kind: "REQUEST_DIRECTORY_LIST"
+    path: string
+}
+
+export interface RequestFileCommand {
+    kind: "REQUEST_FILE"
+    path: string
+}
+
+export type ParsedCommand =
+    | WriteFileCommand
+    | EditFileCommand
+    | DeleteFileCommand
+    | MovePathCommand
+    | CreateDirectoryCommand
+    | RequestDirectoryListCommand
+    | RequestFileCommand
+
+export interface ParseError {
+    kind: "PARSE_ERROR"
+    raw: string
+    message: string
+}
+
+export type ParseItem = ParsedCommand | ParseError
+
+/** 匹配一个完整的指令标签块(自闭合或成对) */
+const COMMAND_BLOCK_RE =
+    /<(WRITE_FILE|EDIT_FILE|DELETE_FILE|MOVE_PATH|CREATE_DIRECTORY|REQUEST_DIRECTORY_LIST|REQUEST_FILE)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1\s*>)/g
+
+/** 提取标签属性 name="value" 或 name='value' */
+function parseAttrs(raw: string): Record<string, string> {
+    const attrs: Record<string, string> = {}
+    const re = /(\w+)\s*=\s*"([^"]*)"|(\w+)\s*=\s*'([^']*)'/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(raw))) {
+        const key = m[1] ?? m[3]
+        const val = m[2] ?? m[4] ?? ""
+        if (key) attrs[key] = val
+    }
+    return attrs
+}
+
+/**
+ * 从一段可能包含 ```lang\n...\n``` 围栏的正文中提取纯代码。
+ * 若无围栏,原样返回(trim 首尾空行)。
+ */
+function extractCodeFence(body: string): string {
+    const fence = /```[^\n]*\n([\s\S]*?)\n```/m.exec(body)
+    if (fence) return fence[1]
+    return body.replace(/^\n+/, "").replace(/\n+$/, "")
+}
+
+/**
+ * 解析 EDIT_FILE 正文中的多个 SEARCH/REPLACE 块。
+ * 允许它们被单个 ``` 围栏包裹,或散落多个围栏。
+ */
+function parseSearchReplaceBlocks(body: string): SearchReplaceBlock[] {
+    const blocks: SearchReplaceBlock[] = []
+    // 允许围栏与不带围栏两种写法,统一在原始正文上扫 SR 标记
+    const re =
+        /<{7}\s*SEARCH\s*\n([\s\S]*?)\n={7}\s*\n([\s\S]*?)\n>{7}\s*REPLACE/g
+    let m: RegExpExecArray | null
+    while ((m = re.exec(body))) {
+        blocks.push({ search: m[1], replace: m[2] })
+    }
+    return blocks
+}
+
+export function parseCommands(text: string): ParseItem[] {
+    const items: ParseItem[] = []
+    COMMAND_BLOCK_RE.lastIndex = 0
+    let m: RegExpExecArray | null
+    while ((m = COMMAND_BLOCK_RE.exec(text))) {
+        const [full, tag, attrRaw, inner] = m
+        const attrs = parseAttrs(attrRaw || "")
+        const kind = tag as CommandKind
+
+        try {
+            switch (kind) {
+                case "WRITE_FILE": {
+                    const path = requireAttr(attrs, "path", tag)
+                    const content = extractCodeFence(inner ?? "")
+                    items.push({ kind, path, content })
+                    break
+                }
+                case "EDIT_FILE": {
+                    const path = requireAttr(attrs, "path", tag)
+                    const edits = parseSearchReplaceBlocks(inner ?? "")
+                    if (edits.length === 0) {
+                        throw new Error("EDIT_FILE 未包含任何 SEARCH/REPLACE 块")
+                    }
+                    items.push({ kind, path, edits })
+                    break
+                }
+                case "DELETE_FILE": {
+                    const path = requireAttr(attrs, "path", tag)
+                    items.push({ kind, path })
+                    break
+                }
+                case "MOVE_PATH": {
+                    const source = requireAttr(attrs, "source_path", tag)
+                    const destination = requireAttr(attrs, "destination_path", tag)
+                    items.push({ kind, source, destination })
+                    break
+                }
+                case "CREATE_DIRECTORY": {
+                    const path = requireAttr(attrs, "path", tag)
+                    items.push({ kind, path })
+                    break
+                }
+                case "REQUEST_DIRECTORY_LIST": {
+                    const path = requireAttr(attrs, "path", tag)
+                    items.push({ kind, path })
+                    break
+                }
+                case "REQUEST_FILE": {
+                    const path = requireAttr(attrs, "path", tag)
+                    items.push({ kind, path })
+                    break
+                }
+            }
+        } catch (e) {
+            items.push({
+                kind: "PARSE_ERROR",
+                raw: full,
+                message: e instanceof Error ? e.message : String(e),
+            })
+        }
+    }
+    return items
+}
+
+function requireAttr(
+    attrs: Record<string, string>,
+    key: string,
+    tag: string,
+): string {
+    const v = attrs[key]?.trim()
+    if (!v) throw new Error(`<${tag}> 缺少必需属性 ${key}`)
+    return v
+}
