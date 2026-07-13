@@ -137,10 +137,15 @@ export function ChatToolbar({
 
       {/* 清空确认弹窗 */}
       <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
-        {/* 用一个不可见的 trigger 定位在右上角 */}
+        {/* 用一个不可见的 button 作为锚点定位 */}
         <PopoverTrigger
           render={
-            <span className="pointer-events-none absolute" aria-hidden />
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              className="pointer-events-none absolute h-0 w-0 opacity-0"
+            />
           }
         />
         <PopoverContent align="end" className="w-64 p-3">

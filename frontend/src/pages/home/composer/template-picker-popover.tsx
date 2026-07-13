@@ -1,5 +1,5 @@
 import { FileText, Pencil, Plus, Search, Trash2 } from "lucide-react"
-import { useMemo, useState, type ReactNode } from "react"
+import { useMemo, useState, type ReactElement } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -19,7 +19,8 @@ interface TemplatePickerPopoverProps {
   onCreate: () => void
   onEdit: (id: number) => void
   onDelete: (id: number) => void
-  children: ReactNode
+  /** 必须是一个原生 <button> 元素,Popover 会将触发行为合并到它上面 */
+  children: ReactElement
 }
 
 export function TemplatePickerPopover({
@@ -61,7 +62,7 @@ export function TemplatePickerPopover({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<span>{children}</span>} />
+      <PopoverTrigger render={children} />
       <PopoverContent
         side="top"
         align="start"

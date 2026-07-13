@@ -64,6 +64,7 @@ export default function HomePage() {
   const handleSelectConversation = useCallback(
     async (id: number) => {
       const detail = await ConversationService.Get(id)
+      console.log("[home] load conversation", id, detail?.conversation)
       if (detail) {
         setMessages(
           (detail.messages || []).map((m) => ({
@@ -71,11 +72,15 @@ export default function HomePage() {
             role: m.role as "user" | "assistant",
           })),
         )
+        setSelectedTemplateIds(
+          new Set(detail.conversation.templateIds || []),
+        )
         setActiveConvId(id)
       } else {
         // 会话已不存在(可能被外部删除),清理缓存
         setActiveConvId(null)
         setMessages([])
+        setSelectedTemplateIds(new Set())
       }
     },
     [setActiveConvId],
@@ -92,6 +97,7 @@ export default function HomePage() {
   const handleNewConversation = () => {
     setActiveConvId(null)
     setMessages([])
+    setSelectedTemplateIds(new Set())
   }
 
   const handleDeleteConversation = async (
@@ -178,6 +184,13 @@ export default function HomePage() {
       if (res) {
         if (res.createdNew) {
           setActiveConvId(res.conversationId)
+          // 新建会话时,把当前已选模板同步落库
+          if (selectedTemplateIds.size > 0) {
+            await ConversationService.SetTemplates({
+              conversationId: res.conversationId,
+              templateIds: Array.from(selectedTemplateIds),
+            })
+          }
           await loadConversations()
         }
 
@@ -266,6 +279,23 @@ export default function HomePage() {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      const ids = Array.from(next)
+      console.log("[home] toggle template", {
+        toggledId: id,
+        activeConvId,
+        nextIds: ids,
+      })
+      // 若已存在活动会话,持久化模板选择
+      if (activeConvId != null) {
+        void ConversationService.SetTemplates({
+          conversationId: activeConvId,
+          templateIds: ids,
+        })
+          .then(() => console.log("[home] SetTemplates ok", activeConvId, ids))
+          .catch((err) => console.error("[home] SetTemplates failed", err))
+      } else {
+        console.log("[home] SetTemplates skipped (no active conversation)")
+      }
       return next
     })
   }
