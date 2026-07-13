@@ -8,6 +8,7 @@ import {
 } from "@/../bindings/prompttool/internal/services"
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
 import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
+import { useConversationStore } from "@/store"
 
 import { ChatPanel } from "./chat-panel"
 import { executeCommands } from "./executor/command-executor"
@@ -32,7 +33,8 @@ export default function HomePage() {
   )
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
-  const [activeConvId, setActiveConvId] = useState<number | null>(null)
+  const activeConvId = useConversationStore((s) => s.activeConversationId)
+  const setActiveConvId = useConversationStore((s) => s.setActiveConversationId)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const loadTemplates = useCallback(async () => {
@@ -59,18 +61,33 @@ export default function HomePage() {
     void loadConversations()
   }, [loadTemplates, loadConversations])
 
-  const handleSelectConversation = async (id: number) => {
-    const detail = await ConversationService.Get(id)
-    if (detail) {
-      setMessages(
-        (detail.messages || []).map((m) => ({
-          ...m,
-          role: m.role as "user" | "assistant",
-        })),
-      )
-      setActiveConvId(id)
+  const handleSelectConversation = useCallback(
+    async (id: number) => {
+      const detail = await ConversationService.Get(id)
+      if (detail) {
+        setMessages(
+          (detail.messages || []).map((m) => ({
+            ...m,
+            role: m.role as "user" | "assistant",
+          })),
+        )
+        setActiveConvId(id)
+      } else {
+        // 会话已不存在(可能被外部删除),清理缓存
+        setActiveConvId(null)
+        setMessages([])
+      }
+    },
+    [setActiveConvId],
+  )
+
+  // 页面加载后,若存在缓存的会话 id 则恢复其消息
+  useEffect(() => {
+    if (activeConvId != null && messages.length === 0) {
+      void handleSelectConversation(activeConvId)
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleNewConversation = () => {
     setActiveConvId(null)
