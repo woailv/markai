@@ -157,13 +157,12 @@ export default function HomePage() {
 
     if (!isAssistant) {
       const templateBlocks = templates
-        .filter((t) => selectedTemplateIds.has(t.id))
-        .map((tpl) => {
-          const { plain } = buildTemplatePreview(tpl)
-          const title = tpl.title?.trim() || "未命名模板"
-          return `# ${title}\n${plain}`.trim()
-        })
-        .filter((s) => s.length > 0)
+          .filter((t) => selectedTemplateIds.has(t.id))
+          .map((tpl) => {
+            const { plain } = buildTemplatePreview(tpl)
+            return plain.trim()
+          })
+          .filter((s) => s.length > 0)
 
       if (templateBlocks.length > 0) {
         payload = `${templateBlocks.join("\n\n---\n\n")}\n\n---\n\n${content}`
