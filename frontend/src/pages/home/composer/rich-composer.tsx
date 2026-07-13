@@ -138,7 +138,7 @@ export function RichComposer({
           outline: "none",
         },
         ".cm-placeholder": {
-          color: "hsl(var(--muted-foreground))",
+          color: "#9ca3af !important",
         },
       }),
       EditorState.allowMultipleSelections.of(true),
