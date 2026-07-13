@@ -53,6 +53,7 @@ export function RichComposer({
   })
   const [isDragOver, setIsDragOver] = useState(false)
   const editorRef = useRef<RichEditorHandle>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setDraft(doc)
@@ -89,17 +90,61 @@ export function RichComposer({
 
   useEffect(() => {
     const unsub = Events.On("files:dropped", (evt) => {
-      setIsDragOver(false)
       const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
       if (!payload?.paths?.length) return
 
       const handle = editorRef.current
       if (!handle) return
-      if (
+      const view = handle.view
+      if (!view) return
+      const root = rootRef.current
+      if (!root) return
+
+      // 全局唯一目标选择:扫描页面上所有拖放目标(data-file-drop-target),
+      // 依次尝试:落点命中 → 唯一目标;若无坐标则用当前聚焦的目标。
+      // 只有当选中的目标 === 本输入框时才处理,否则让位给对应的 MessageEditor。
+      const hasCoords =
         payload.hasCoords &&
         payload.x !== undefined &&
         payload.y !== undefined
-      ) {
+
+      const allTargets = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+      )
+
+      let winner: HTMLElement | null = null
+
+      if (hasCoords) {
+        // 使用 elementsFromPoint 拿到落点所有层级,取第一个属于 drop target 的
+        const stack = document.elementsFromPoint(payload.x, payload.y)
+        for (const el of stack) {
+          const t = allTargets.find((tgt) => tgt.contains(el))
+          if (t) {
+            winner = t
+            break
+          }
+        }
+      }
+
+      if (!winner) {
+        // 无坐标或落点未命中任一目标 → 用焦点判定
+        const focused = document.activeElement
+        if (focused instanceof HTMLElement) {
+          winner = allTargets.find((t) => t.contains(focused)) ?? null
+        }
+      }
+
+      if (!winner) {
+        // 兜底:仅有输入框时(无 MessageEditor 打开),交给输入框
+        if (allTargets.length === 1 && allTargets[0] === root) {
+          winner = root
+        }
+      }
+
+      if (winner !== root) return
+
+      setIsDragOver(false)
+      if (hasCoords) {
         handle.insertFilesAtCoords(payload.paths, payload.x, payload.y)
       } else {
         handle.insertFilesAtCursor(payload.paths)
@@ -117,6 +162,7 @@ export function RichComposer({
 
   return (
     <div
+      ref={rootRef}
       data-file-drop-target="true"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}

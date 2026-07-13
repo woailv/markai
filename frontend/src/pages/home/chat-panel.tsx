@@ -1,6 +1,18 @@
+import { Events } from "@wailsio/runtime"
 import { Bot, Check, MessagesSquare, Pencil, Sparkles, Trash2, User, X } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+} from "react"
 
+import {
+  RichEditor,
+  type RichEditorHandle,
+  documentToPlainText,
+} from "@/components/rich-editor"
 import { cn } from "@/lib/utils"
 
 import { ChatToolbar } from "./chat-toolbar"
@@ -161,6 +173,16 @@ function MessageBubble({
     setEditing(false)
   }
 
+  const handleCancelEdit = () => {
+    setEditing(false)
+    setEditContent(msg.content)
+  }
+
+  const handleStartEdit = () => {
+    setEditContent(msg.content)
+    setEditing(true)
+  }
+
   return (
     <div
       className={cn(
@@ -210,32 +232,12 @@ function MessageBubble({
           )}
         >
           {editing ? (
-            <div className="flex min-w-[300px] flex-col gap-2">
-              <textarea
-                className="min-h-[100px] w-full resize-y rounded bg-background/50 p-2 text-foreground outline-none focus:ring-1 focus:ring-ring"
-                value={editContent}
-                onChange={(e) => setEditContent(e.target.value)}
-              />
-              <div className="flex justify-end gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(false)
-                    setEditContent(msg.content)
-                  }}
-                  className="rounded p-1 hover:bg-muted/50"
-                >
-                  <X className="h-3 w-3 text-current" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  className="rounded p-1 hover:bg-muted/50"
-                >
-                  <Check className="h-3 w-3 text-current" />
-                </button>
-              </div>
-            </div>
+            <MessageEditor
+              value={editContent}
+              onChange={setEditContent}
+              onSave={handleSave}
+              onCancel={handleCancelEdit}
+            />
           ) : (
             <MessageContent content={msg.content} inverted={isUser} />
           )}
@@ -250,7 +252,7 @@ function MessageBubble({
             >
               <button
                 type="button"
-                onClick={() => setEditing(true)}
+                onClick={handleStartEdit}
                 title="编辑消息"
                 className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
               >
@@ -275,6 +277,171 @@ function MessageBubble({
         >
           {formatRelativeTime(msg.createdAt)}
         </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 编辑态消息编辑器。
+ * 与 RichComposer 一致的能力:file token chip、文件拖入、Wails files:dropped 事件。
+ * 与输入框的区别:Enter 不提交(避免误保存),用户需显式点击 √ 保存;Esc 取消。
+ */
+function MessageEditor({
+  value,
+  onChange,
+  onSave,
+  onCancel,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onSave: () => void
+  onCancel: () => void
+}) {
+  const editorRef = useRef<RichEditorHandle>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const handleDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    if (e.currentTarget === e.target) setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    setIsDragOver(false)
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault()
+    }
+    // 不 stopPropagation,让 Wails 拦截器收到冒泡
+  }, [])
+
+  // 仅在编辑态挂载时订阅;RichComposer 也订阅同一事件,
+  // Wails 会广播给所有订阅者,由当前聚焦的编辑器处理插入。
+  // 为避免消息编辑器与输入框同时插入,这里只在编辑器聚焦时响应。
+  useEffect(() => {
+    const unsub = Events.On("files:dropped", (evt) => {
+      const handle = editorRef.current
+      if (!handle) return
+      const view = handle.view
+      if (!view) return
+      const root = rootRef.current
+      if (!root) return
+      const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      if (!payload?.paths?.length) return
+
+      // 全局唯一目标选择:与 RichComposer 保持一致的策略。
+      // 扫描页面上所有 data-file-drop-target,通过落点/焦点选出 winner,
+      // 只有 winner === 本编辑器根节点时才处理。
+      const hasCoords =
+        payload.hasCoords &&
+        payload.x !== undefined &&
+        payload.y !== undefined
+
+      const allTargets = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+      )
+
+      let winner: HTMLElement | null = null
+
+      if (hasCoords) {
+        const stack = document.elementsFromPoint(payload.x, payload.y)
+        for (const el of stack) {
+          const t = allTargets.find((tgt) => tgt.contains(el))
+          if (t) {
+            winner = t
+            break
+          }
+        }
+      }
+
+      if (!winner) {
+        const focused = document.activeElement
+        if (focused instanceof HTMLElement) {
+          winner = allTargets.find((t) => t.contains(focused)) ?? null
+        }
+      }
+
+      if (winner !== root) return
+
+      setIsDragOver(false)
+      if (hasCoords) {
+        handle.insertFilesAtCoords(payload.paths, payload.x, payload.y)
+      } else {
+        handle.insertFilesAtCursor(payload.paths)
+      }
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault()
+      onCancel()
+    }
+  }
+
+  return (
+    <div
+      className="flex min-w-[300px] flex-col gap-2"
+      onKeyDown={handleKeyDown}
+    >
+      <div
+        ref={rootRef}
+        data-file-drop-target="true"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={cn(
+          "rounded border bg-background/80 px-2 py-1 text-foreground transition-colors",
+          "focus-within:ring-1 focus-within:ring-ring",
+          isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
+          "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
+        )}
+      >
+        {/*
+          编辑态必须使用 editable 内核才能接受输入。
+          用户气泡背景较深,外层容器给了一个中性亮底,保证文字可读性。
+        */}
+        <RichEditor
+          value={value}
+          onChange={onChange}
+          mode="editable"
+          fileTokens={{ enabled: true, allowDrop: true }}
+          editorRef={editorRef}
+          className="w-full"
+        />
+      </div>
+      <div className="flex justify-end gap-1">
+        <button
+          type="button"
+          onClick={onCancel}
+          title="取消 (Esc)"
+          className="rounded p-1 hover:bg-muted/50"
+        >
+          <X className="h-3 w-3 text-current" />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const plain = documentToPlainText(value)
+            if (typeof plain === "string" ? plain.trim() : String(plain ?? "").trim()) {
+              onSave()
+            }
+          }}
+          title="保存"
+          className="rounded p-1 hover:bg-muted/50"
+        >
+          <Check className="h-3 w-3 text-current" />
+        </button>
       </div>
     </div>
   )
