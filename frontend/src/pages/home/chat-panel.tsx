@@ -1,5 +1,17 @@
 import { Events } from "@wailsio/runtime"
-import { Bot, Check, Copy, MessagesSquare, Pencil, Sparkles, Trash2, User, X } from "lucide-react"
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  MessagesSquare,
+  Pencil,
+  Sparkles,
+  Trash2,
+  User,
+  X,
+} from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -246,7 +258,18 @@ function MessageBubble({
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(msg.content)
   const [copied, setCopied] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const isUser = msg.role === "user"
+
+  // 折叠时用于展示的预览:取首行非空文本,截断长度
+  const collapsedPreview = (() => {
+    const firstLine = msg.content
+      .split("\n")
+      .map((s) => s.trim())
+      .find((s) => s.length > 0) ?? ""
+    const MAX = 80
+    return firstLine.length > MAX ? `${firstLine.slice(0, MAX)}…` : firstLine
+  })()
 
   const handleCopy = async () => {
     try {
@@ -336,6 +359,23 @@ function MessageBubble({
               onSave={handleSave}
               onCancel={handleCancelEdit}
             />
+          ) : collapsed ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              title="点击展开"
+              className={cn(
+                "flex w-full items-center gap-1.5 text-left text-[12.5px] italic",
+                isUser
+                  ? "text-primary-foreground/80 hover:text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <ChevronRight className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {collapsedPreview || "(空消息)"}
+              </span>
+            </button>
           ) : (
             <MessageContent content={msg.content} inverted={isUser} />
           )}
@@ -358,6 +398,18 @@ function MessageBubble({
                   <Check className="h-3 w-3 text-emerald-500" />
                 ) : (
                   <Copy className="h-3 w-3" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCollapsed((v) => !v)}
+                title={collapsed ? "展开消息" : "收起消息"}
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
                 )}
               </button>
               <button
