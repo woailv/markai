@@ -314,6 +314,24 @@ export default function HomePage() {
     await loadTemplates()
   }
 
+  const handleClearAllConversations = async () => {
+    const ok = await confirmDestructive({
+      title: "清空所有会话",
+      description: "将删除所有历史会话及消息记录，确定继续？",
+      destructiveLabel: "清空",
+    })
+    if (!ok) return
+    for (const conv of conversations) {
+      await ConversationService.Delete(conv.id)
+    }
+    await loadConversations()
+    if (activeConvId != null) {
+      setActiveConvId(null)
+      setMessages([])
+      setSelectedTemplateIds(new Set())
+    }
+  }
+
   return (
     <div className="flex h-svh overflow-hidden">
       {sidebarOpen && (
@@ -323,6 +341,7 @@ export default function HomePage() {
           onSelect={handleSelectConversation}
           onNew={handleNewConversation}
           onDelete={handleDeleteConversation}
+          onClearAll={handleClearAllConversations}
         />
       )}
       <ChatPanel

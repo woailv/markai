@@ -10,6 +10,7 @@ interface HistorySidebarProps {
   onSelect: (id: number) => void
   onNew: () => void
   onDelete: (id: number, e: React.MouseEvent) => void
+  onClearAll?: () => void
 }
 
 export function HistorySidebar({
@@ -18,20 +19,33 @@ export function HistorySidebar({
   onSelect,
   onNew,
   onDelete,
+  onClearAll,
 }: HistorySidebarProps) {
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/20">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <span className="text-sm font-semibold">历史会话</span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7"
-          onClick={onNew}
-          title="新建会话"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onClearAll}
+            disabled={conversations.length === 0 || !onClearAll}
+            title="清空全部会话"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={onNew}
+            title="新建会话"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
       <div className="flex-1 space-y-1 overflow-y-auto p-2">
         {conversations.length === 0 ? (
