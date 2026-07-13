@@ -117,6 +117,15 @@ export default function HomePage() {
     }
   }
 
+  const handleRenameConversation = useCallback(async (id: number, newTitle: string) => {
+    try {
+      await ConversationService.Rename({ conversationId: id, title: newTitle });
+      await loadConversations();
+    } catch (err) {
+      console.error("Failed to rename conversation", err);
+    }
+  }, [loadConversations]);
+
   const handleDeleteMessage = async (msgId: number) => {
     const ok = await confirmDestructive({
       title: "删除消息",
@@ -341,6 +350,7 @@ export default function HomePage() {
           onSelect={handleSelectConversation}
           onNew={handleNewConversation}
           onDelete={handleDeleteConversation}
+          onRename={handleRenameConversation}
           onClearAll={handleClearAllConversations}
         />
       )}

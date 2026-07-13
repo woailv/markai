@@ -1,4 +1,4 @@
-import { MessageSquare, Plus, Trash2 } from "lucide-react"
+import { MessageSquare, Plus, Trash2, Pencil } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -11,6 +11,7 @@ interface HistorySidebarProps {
   onNew: () => void
   onDelete: (id: number, e: React.MouseEvent) => void
   onClearAll?: () => void
+  onRename?: (id: number, newTitle: string) => void
 }
 
 export function HistorySidebar({
@@ -20,6 +21,7 @@ export function HistorySidebar({
   onNew,
   onDelete,
   onClearAll,
+  onRename,
 }: HistorySidebarProps) {
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-r bg-muted/20">
@@ -70,12 +72,27 @@ export function HistorySidebar({
                 <span>{c.messageCount} 条消息</span>
                 <span>{new Date(c.updatedAt).toLocaleDateString()}</span>
               </div>
-              <div
-                className="absolute right-2 top-2 hidden items-center justify-center rounded bg-background/80 p-1 shadow-sm hover:text-destructive group-hover:flex"
-                onClick={(e) => onDelete(c.id, e)}
-                title="删除会话"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
+              <div className="absolute right-2 top-2 hidden items-center gap-1 group-hover:flex">
+                <div
+                  className="rounded bg-background/80 p-1 shadow-sm hover:bg-background"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const newTitle = window.prompt('输入新标题', c.title);
+                    if (newTitle && newTitle.trim() && newTitle.trim() !== c.title) {
+                      onRename?.(c.id, newTitle.trim());
+                    }
+                  }}
+                  title="重命名"
+                >
+                  <Pencil className="h-3 w-3" />
+                </div>
+                <div
+                  className="rounded bg-background/80 p-1 shadow-sm hover:text-destructive"
+                  onClick={(e) => onDelete(c.id, e)}
+                  title="删除会话"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </div>
               </div>
             </button>
           ))
