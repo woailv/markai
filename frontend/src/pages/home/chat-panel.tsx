@@ -36,6 +36,7 @@ import {
   extractFilePathsFromMessages,
 } from "./file-context"
 import { MessageContent } from "./message-content"
+import { buildTemplatesContext } from "./template-context"
 import { formatRelativeTime } from "./types"
 import type { ChatMessage, Template } from "./types"
 
@@ -182,6 +183,7 @@ export function ChatPanel({
             messages={messages}
             onClear={onClear}
             onOpenHistory={onOpenHistory}
+            templates={templates}
           />
         </div>
       </div>
@@ -206,6 +208,7 @@ export function ChatPanel({
                       isGrouped={isGrouped}
                       onDelete={onDeleteMessage}
                       onEdit={onEditMessage}
+                      templates={templates}
                     />
                   )
                 }
@@ -216,6 +219,7 @@ export function ChatPanel({
                     isGrouped={isGrouped}
                     onDelete={onDeleteMessage}
                     onEdit={onEditMessage}
+                    templates={templates}
                   />
                 )
               })}
@@ -250,11 +254,13 @@ function UserBubble({
   isGrouped,
   onDelete,
   onEdit,
+  templates,
 }: {
   msg: ChatMessage
   isGrouped: boolean
   onDelete?: (id: number) => void
   onEdit?: (id: number, newContent: string) => void
+  templates: Template[]
 }) {
   const {
     editing,
@@ -268,7 +274,7 @@ function UserBubble({
     handleSave,
     handleCancelEdit,
     handleStartEdit,
-  } = useMessageActions(msg, onEdit)
+  } = useMessageActions(msg, templates, onEdit)
 
   return (
     <div
@@ -349,11 +355,13 @@ function AssistantRow({
   isGrouped,
   onDelete,
   onEdit,
+  templates,
 }: {
   msg: ChatMessage
   isGrouped: boolean
   onDelete?: (id: number) => void
   onEdit?: (id: number, newContent: string) => void
+  templates: Template[]
 }) {
   const {
     editing,
@@ -367,7 +375,7 @@ function AssistantRow({
     handleSave,
     handleCancelEdit,
     handleStartEdit,
-  } = useMessageActions(msg, onEdit)
+  } = useMessageActions(msg, templates, onEdit)
 
   return (
     <div
@@ -465,6 +473,7 @@ function AssistantRow({
  */
 function useMessageActions(
   msg: ChatMessage,
+  templates: Template[],
   onEdit?: (id: number, newContent: string) => void,
 ) {
   const [editing, setEditing] = useState(false)
@@ -489,7 +498,15 @@ function useMessageActions(
       const header = `**${isUser ? "User" : "Assistant"}**:\n\n${body}`
       const paths = extractFilePathsFromMessages([body])
       const filesContext = await buildFilesContext(paths)
-      const finalText = filesContext ? `${filesContext}\n\n${header}` : header
+      const templatesContext = buildTemplatesContext([body], templates)
+      // 顺序: templates → files → 消息正文 —— 与"复制全部"保持一致
+      const prefixes = [templatesContext, filesContext].filter(
+        (s) => s.length > 0,
+      )
+      const finalText =
+        prefixes.length > 0
+          ? `${prefixes.join("\n\n")}\n\n${header}`
+          : header
       await navigator.clipboard.writeText(finalText)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
@@ -756,6 +773,7 @@ function MessageEditor({
           onChange={onChange}
           mode="editable"
           fileTokens={{ enabled: true, allowDrop: true }}
+          templateTokens={{ enabled: true }}
           editorRef={editorRef}
           className="w-full"
         />

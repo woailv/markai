@@ -9,12 +9,14 @@ import {
   buildFilesContext,
   extractFilePathsFromMessages,
 } from "./file-context"
-import type { ChatMessage } from "./types"
+import { buildTemplatesContext } from "./template-context"
+import type { ChatMessage, Template } from "./types"
 
 interface ChatToolbarProps {
   messages: ChatMessage[]
   onClear: () => void
   onOpenHistory?: () => void
+  templates: Template[]
 }
 
 /**
@@ -26,6 +28,7 @@ export function ChatToolbar({
   messages,
   onClear,
   onOpenHistory,
+  templates,
 }: ChatToolbarProps) {
   const [copied, setCopied] = useState(false)
   const [copying, setCopying] = useState(false)
@@ -48,10 +51,20 @@ export function ChatToolbar({
       const paths = extractFilePathsFromMessages(messages.map((m) => m.content))
       const filesContext = await buildFilesContext(paths)
 
-      // 将文件上下文置于对话之前
-      let finalText = filesContext
-        ? `${filesContext}\n\n${conversation}`
-        : conversation
+      // 展开模板 token 为 <templates>...</templates> 上下文
+      const templatesContext = buildTemplatesContext(
+        messages.map((m) => m.content),
+        templates,
+      )
+
+      // 顺序: templates → files → 对话
+      const prefixes = [templatesContext, filesContext].filter(
+        (s) => s.length > 0,
+      )
+      let finalText =
+        prefixes.length > 0
+          ? `${prefixes.join("\n\n")}\n\n${conversation}`
+          : conversation
 
       // 若最后一条消息是用户发送的，则追加 Assistant 的答复引导后缀
       if (messages[messages.length - 1].role === "user") {

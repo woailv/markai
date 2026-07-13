@@ -62,6 +62,7 @@ export function AssistantMessage({ content }: AssistantMessageProps) {
               mode="readonly"
               markdown
               fileTokens={{ enabled: true }}
+              templateTokens={{ enabled: true }}
               className="min-w-0 max-w-none"
           />
         </div>
@@ -117,6 +118,7 @@ export function AssistantMessage({ content }: AssistantMessageProps) {
                 mode="readonly"
                 markdown
                 fileTokens={{ enabled: true }}
+                templateTokens={{ enabled: true }}
                 className="min-w-0 max-w-none"
               />
             </div>

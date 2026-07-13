@@ -25,6 +25,10 @@ import {
 } from "./extensions"
 import { createFileChipPlugin, type FileChipVariant } from "./file-chip"
 import { encodeFileToken } from "./file-path-utils"
+import {
+  createTemplateChipPlugin,
+  type TemplateChipVariant,
+} from "./template-chip"
 
 export type RichEditorMode = "editable" | "readonly" | "readonly-inverted"
 
@@ -36,6 +40,11 @@ export interface FileTokenOptions {
    * 只负责阻止 CodeMirror 默认粘贴文件内容;真正的路径插入由外层通过 editorRef 触发。
    */
   allowDrop?: boolean
+}
+
+export interface TemplateTokenOptions {
+  /** 是否识别 template token 并渲染为 chip */
+  enabled: boolean
 }
 
 export interface RichEditorHandle {
@@ -59,6 +68,7 @@ export interface RichEditorProps {
   lineWrapping?: boolean
   placeholder?: string
   fileTokens?: FileTokenOptions
+  templateTokens?: TemplateTokenOptions
   /** Enter 提交(仅 editable) */
   onSubmit?: () => void
   /** 逃生舱:允许外层追加扩展(如模板编辑器的变量/路径高亮) */
@@ -74,6 +84,15 @@ function chipVariantForMode(mode: RichEditorMode): FileChipVariant {
   return "readonly"
 }
 
+/** 模板 chip 视觉变体与 file chip 保持同构 */
+function templateChipVariantForMode(
+  mode: RichEditorMode,
+): TemplateChipVariant {
+  if (mode === "editable") return "editable"
+  if (mode === "readonly-inverted") return "readonly-inverted"
+  return "readonly"
+}
+
 export function RichEditor({
   value,
   onChange,
@@ -83,6 +102,7 @@ export function RichEditor({
   lineWrapping = true,
   placeholder,
   fileTokens,
+  templateTokens,
   onSubmit,
   extraExtensions,
   editorRef,
@@ -145,6 +165,13 @@ export function RichEditor({
       exts.push(createFileChipPlugin(chipVariantForMode(mode)))
     }
 
+    // template token chip
+    if (templateTokens?.enabled) {
+      exts.push(
+        createTemplateChipPlugin(templateChipVariantForMode(mode)),
+      )
+    }
+
     // 拖放:仅可编辑 + 显式允许时启用
     if (mode === "editable" && fileTokens?.allowDrop) {
       exts.push(fileDropHandlers)
@@ -182,6 +209,7 @@ export function RichEditor({
     placeholder,
     fileTokens?.enabled,
     fileTokens?.allowDrop,
+    templateTokens?.enabled,
     extraExtensions,
     onSubmit,
   ])

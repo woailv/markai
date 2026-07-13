@@ -10,6 +10,8 @@ import type { ConversationSummary } from "@/../bindings/prompttool/internal/serv
 import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 import { useConversationStore } from "@/store"
 
+import { encodeTemplateToken } from "@/components/rich-editor"
+
 import { ChatPanel } from "./chat-panel"
 import { executeCommands } from "./executor/command-executor"
 import {
@@ -20,7 +22,6 @@ import { ConfirmDialogHost, confirmDestructive } from "./executor/confirm-dialog
 import { HistorySidebar } from "./history-sidebar"
 import { withExecMeta } from "./executor/exec-meta"
 import type { ChatMessage, Template } from "./types"
-import { buildTemplatePreview } from "./utils"
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -153,16 +154,14 @@ export default function HomePage() {
     let payload = content
 
     if (!isAssistant) {
-      const templateBlocks = templates
-          .filter((t) => selectedTemplateIds.has(t.id))
-          .map((tpl) => {
-            const { plain } = buildTemplatePreview(tpl)
-            return plain.trim()
-          })
-          .filter((s) => s.length > 0)
+      // 在消息前置模板 token —— 会话记录中只显示模板名(通过 chip 渲染),
+      // 复制时再由 template-context 展开为完整模板内容。
+      const tokens = templates
+        .filter((t) => selectedTemplateIds.has(t.id))
+        .map((tpl) => encodeTemplateToken(tpl.id, tpl.title))
 
-      if (templateBlocks.length > 0) {
-        payload = `${templateBlocks.join("\n\n---\n\n")}\n\n---\n\n${content}`
+      if (tokens.length > 0) {
+        payload = `${tokens.join(" ")}\n\n${content}`
       }
     }
 

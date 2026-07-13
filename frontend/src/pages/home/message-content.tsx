@@ -37,6 +37,7 @@ export function MessageContent({
       mode={inverted ? "readonly-inverted" : "readonly"}
       markdown
       fileTokens={{ enabled: true }}
+      templateTokens={{ enabled: true }}
       className={
         // 窄气泡内 markdown 元素样式校准:代码块/引用/列表更紧凑
         "min-w-0 max-w-full " +
