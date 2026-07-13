@@ -1,5 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
+import { Events } from "@wailsio/runtime"
 import {
   ChevronDown,
   ChevronRight,
@@ -7,10 +8,17 @@ import {
   GripVertical,
   Trash2,
 } from "lucide-react"
-import { useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+} from "react"
 
-import { RichEditor } from "@/components/rich-editor"
+import { RichEditor, type RichEditorHandle } from "@/components/rich-editor"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 import { promptExtensions } from "./cm-extensions"
 import type { TemplateBlock } from "./types"
@@ -149,19 +157,135 @@ function MarkdownBlock({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         >
-          <RichEditor
+          <MarkdownBlockEditor
             value={block.content}
             onChange={(v) => onChange(block.id, v)}
-            mode="editable"
-            markdown
-            placeholder="请输入内容..."
-            // 模板块不识别 file token,也不吃 Enter 提交
-            fileTokens={{ enabled: false }}
-            extraExtensions={promptExtensions}
-            className="min-h-[60px]"
           />
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * 模板块的可编辑内核封装。
+ * 与 MessageEditor 保持一致:
+ *  - 挂载 data-file-drop-target,由 Wails 广播的 files:dropped 事件按落点/焦点决出唯一 winner
+ *  - 启用 fileTokens.enabled + allowDrop,让 RichEditor 阻断 CM 默认粘贴并渲染 chip
+ *  - 不订阅 onSubmit,Enter 走换行,符合模板编辑语义
+ */
+function MarkdownBlockEditor({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const editorRef = useRef<RichEditorHandle>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  const handleDragOver = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    if (e.currentTarget === e.target) setIsDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: ReactDragEvent<HTMLDivElement>) => {
+    setIsDragOver(false)
+    if (e.dataTransfer?.types?.includes("Files")) {
+      e.preventDefault()
+    }
+    // 不 stopPropagation,让 Wails 拦截器收到冒泡
+  }, [])
+
+  useEffect(() => {
+    const unsub = Events.On("files:dropped", (evt) => {
+      const handle = editorRef.current
+      if (!handle) return
+      const view = handle.view
+      if (!view) return
+      const root = rootRef.current
+      if (!root) return
+      const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      if (!payload?.paths?.length) return
+
+      const hasCoords =
+        payload.hasCoords &&
+        payload.x !== undefined &&
+        payload.y !== undefined
+
+      const allTargets = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-file-drop-target="true"]',
+        ),
+      )
+
+      let winner: HTMLElement | null = null
+
+      if (hasCoords) {
+        const stack = document.elementsFromPoint(payload.x, payload.y)
+        for (const el of stack) {
+          const t = allTargets.find((tgt) => tgt.contains(el))
+          if (t) {
+            winner = t
+            break
+          }
+        }
+      }
+
+      if (!winner) {
+        const focused = document.activeElement
+        if (focused instanceof HTMLElement) {
+          winner = allTargets.find((t) => t.contains(focused)) ?? null
+        }
+      }
+
+      if (winner !== root) return
+
+      setIsDragOver(false)
+      if (hasCoords) {
+        handle.insertFilesAtCoords(payload.paths, payload.x, payload.y)
+      } else {
+        handle.insertFilesAtCursor(payload.paths)
+      }
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
+
+  return (
+    <div
+      ref={rootRef}
+      data-file-drop-target="true"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={cn(
+        "rounded-md transition-colors",
+        isDragOver && "bg-primary/5 ring-2 ring-primary/40",
+        "[&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
+      )}
+    >
+      <RichEditor
+        value={value}
+        onChange={onChange}
+        mode="editable"
+        markdown
+        placeholder="请输入内容..."
+        // 启用文件 token 识别与拖放;不订阅 onSubmit,Enter 保持换行
+        fileTokens={{ enabled: true, allowDrop: true }}
+        editorRef={editorRef}
+        extraExtensions={promptExtensions}
+        className="min-h-[60px]"
+      />
     </div>
   )
 }
