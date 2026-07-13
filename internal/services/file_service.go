@@ -11,11 +11,23 @@ import (
 
 // FileService 提供文件与目录的基础操作,暴露给前端调用。
 // 所有路径要求绝对路径,内部会做 Clean 归一化。
-type FileService struct{}
+// 若入参中提供 batchID,写/删/移动前会调用 SnapshotService 登记原始状态,
+// 便于后续按批次撤销。
+type FileService struct {
+	snapshots *SnapshotService
+}
 
-// NewFileService 构造函数。
-func NewFileService() *FileService {
-	return &FileService{}
+// NewFileService 构造函数。snapshots 可为 nil(不启用快照)。
+func NewFileService(snapshots *SnapshotService) *FileService {
+	return &FileService{snapshots: snapshots}
+}
+
+// recordSnapshot 若 batchID 有效且 snapshots 已注入,登记单个路径。
+func (s *FileService) recordSnapshot(batchID uint64, absPath string) error {
+	if batchID == 0 || s.snapshots == nil {
+		return nil
+	}
+	return s.snapshots.recordIfNeeded(batchID, absPath)
 }
 
 // Read 读取文件内容。
@@ -41,9 +53,14 @@ func (s *FileService) Read(path string) (*ReadFileResult, error) {
 
 // Write 写入文件内容,自动创建父目录。
 // 返回是否为新建以及 unified diff(与旧内容对比)。
+// 若 in.BatchID != 0,写盘前会登记原始状态用于撤销。
 func (s *FileService) Write(in WriteFileInput) (*WriteFileResult, error) {
 	abs, err := requireAbs(in.Path)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := s.recordSnapshot(in.BatchID, abs); err != nil {
 		return nil, err
 	}
 
@@ -90,6 +107,7 @@ func (s *FileService) Write(in WriteFileInput) (*WriteFileResult, error) {
 }
 
 // Move 移动或重命名文件/目录。目标已存在则报错。
+// 若 in.BatchID != 0,会同时登记 source(存在) 与 destination(不存在) 的原始状态。
 func (s *FileService) Move(in MovePathInput) error {
 	src, err := requireAbs(in.Source)
 	if err != nil {
@@ -107,6 +125,13 @@ func (s *FileService) Move(in MovePathInput) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("file: stat destination %q: %w", dst, err)
 	}
+	// 快照 source 与 destination(destination 应为 not exist 状态)
+	if err := s.recordSnapshot(in.BatchID, src); err != nil {
+		return err
+	}
+	if err := s.recordSnapshot(in.BatchID, dst); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("file: mkdir parent %q: %w", dst, err)
 	}
@@ -117,13 +142,22 @@ func (s *FileService) Move(in MovePathInput) error {
 }
 
 // Delete 删除文件或空目录;若是目录会递归删除。
+// 保留原有签名以兼容旧调用;带批次撤销能力请使用 DeleteWithBatch。
 func (s *FileService) Delete(path string) error {
-	abs, err := requireAbs(path)
+	return s.DeleteWithBatch(DeleteInput{Path: path})
+}
+
+// DeleteWithBatch 与 Delete 语义一致,额外支持关联快照批次。
+func (s *FileService) DeleteWithBatch(in DeleteInput) error {
+	abs, err := requireAbs(in.Path)
 	if err != nil {
 		return err
 	}
 	if _, err := os.Stat(abs); err != nil {
 		return fmt.Errorf("file: stat %q: %w", abs, err)
+	}
+	if err := s.recordSnapshot(in.BatchID, abs); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(abs); err != nil {
 		return fmt.Errorf("file: delete %q: %w", abs, err)
@@ -132,9 +166,18 @@ func (s *FileService) Delete(path string) error {
 }
 
 // CreateDirectory 创建目录,包含所有必要的父目录。
+// 保留原有签名以兼容旧调用;带批次撤销能力请使用 CreateDirectoryWithBatch。
 func (s *FileService) CreateDirectory(path string) error {
-	abs, err := requireAbs(path)
+	return s.CreateDirectoryWithBatch(CreateDirectoryInput{Path: path})
+}
+
+// CreateDirectoryWithBatch 与 CreateDirectory 语义一致,额外支持关联快照批次。
+func (s *FileService) CreateDirectoryWithBatch(in CreateDirectoryInput) error {
+	abs, err := requireAbs(in.Path)
 	if err != nil {
+		return err
+	}
+	if err := s.recordSnapshot(in.BatchID, abs); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(abs, 0o755); err != nil {

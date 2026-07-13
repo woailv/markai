@@ -16,9 +16,19 @@ func Registry(database *db.DB) ([]application.Service, error) {
 	if err != nil {
 		return nil, fmt.Errorf("services: init prompt template: %w", err)
 	}
+	convSvc, err := NewConversationService(database)
+	if err != nil {
+		return nil, fmt.Errorf("services: init conversation: %w", err)
+	}
+	snapshotSvc, err := NewSnapshotService(database)
+	if err != nil {
+		return nil, fmt.Errorf("services: init snapshot: %w", err)
+	}
 	return []application.Service{
 		application.NewService(NewGreetService()),
 		application.NewService(promptSvc),
-		application.NewService(NewFileService()),
+		application.NewService(NewFileService(snapshotSvc)),
+		application.NewService(convSvc),
+		application.NewService(snapshotSvc),
 	}, nil
 }

@@ -4,6 +4,8 @@
 /**
  * FileService 提供文件与目录的基础操作,暴露给前端调用。
  * 所有路径要求绝对路径,内部会做 Clean 归一化。
+ * 若入参中提供 batchID,写/删/移动前会调用 SnapshotService 登记原始状态,
+ * 便于后续按批次撤销。
  * @module
  */
 
@@ -17,16 +19,32 @@ import * as $models from "./models.js";
 
 /**
  * CreateDirectory 创建目录,包含所有必要的父目录。
+ * 保留原有签名以兼容旧调用;带批次撤销能力请使用 CreateDirectoryWithBatch。
  */
 export function CreateDirectory(path: string): $CancellablePromise<void> {
     return $Call.ByID(1541732614, path);
 }
 
 /**
+ * CreateDirectoryWithBatch 与 CreateDirectory 语义一致,额外支持关联快照批次。
+ */
+export function CreateDirectoryWithBatch($in: $models.CreateDirectoryInput): $CancellablePromise<void> {
+    return $Call.ByID(2497541966, $in);
+}
+
+/**
  * Delete 删除文件或空目录;若是目录会递归删除。
+ * 保留原有签名以兼容旧调用;带批次撤销能力请使用 DeleteWithBatch。
  */
 export function Delete(path: string): $CancellablePromise<void> {
     return $Call.ByID(2936146836, path);
+}
+
+/**
+ * DeleteWithBatch 与 Delete 语义一致,额外支持关联快照批次。
+ */
+export function DeleteWithBatch($in: $models.DeleteInput): $CancellablePromise<void> {
+    return $Call.ByID(714474868, $in);
 }
 
 /**
@@ -38,6 +56,7 @@ export function List(path: string): $CancellablePromise<$models.FileEntry[] | nu
 
 /**
  * Move 移动或重命名文件/目录。目标已存在则报错。
+ * 若 in.BatchID != 0,会同时登记 source(存在) 与 destination(不存在) 的原始状态。
  */
 export function Move($in: $models.MovePathInput): $CancellablePromise<void> {
     return $Call.ByID(2946677758, $in);
@@ -53,6 +72,7 @@ export function Read(path: string): $CancellablePromise<$models.ReadFileResult |
 /**
  * Write 写入文件内容,自动创建父目录。
  * 返回是否为新建以及 unified diff(与旧内容对比)。
+ * 若 in.BatchID != 0,写盘前会登记原始状态用于撤销。
  */
 export function Write($in: $models.WriteFileInput): $CancellablePromise<$models.WriteFileResult | null> {
     return $Call.ByID(2571361002, $in);

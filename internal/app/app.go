@@ -31,6 +31,18 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: init db: %w", err)
 	}
 
+	if err := database.AutoMigrate(
+		&db.Conversation{},
+		&db.Message{},
+		&db.SnapshotBatch{},
+		&db.FileSnapshot{},
+	); err != nil {
+		if closeErr := database.Close(); closeErr != nil {
+			logger.Error("close db after migrate failure", "err", closeErr)
+		}
+		return nil, fmt.Errorf("app: migrate schema: %w", err)
+	}
+
 	svcList, err := services.Registry(database)
 	if err != nil {
 		if closeErr := database.Close(); closeErr != nil {
