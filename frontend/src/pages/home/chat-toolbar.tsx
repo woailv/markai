@@ -1,10 +1,14 @@
-import { Check, Copy, History, MoreHorizontal, Trash2 } from "lucide-react"
+import { Check, Copy, History, Loader2, MoreHorizontal, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
+import {
+  buildFilesContext,
+  extractFilePathsFromMessages,
+} from "./file-context"
 import type { ChatMessage } from "./types"
 
 interface ChatToolbarProps {
@@ -24,26 +28,45 @@ export function ChatToolbar({
   onOpenHistory,
 }: ChatToolbarProps) {
   const [copied, setCopied] = useState(false)
+  const [copying, setCopying] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const hasMessages = messages.length > 0
 
   const handleCopyAll = async () => {
-    if (!hasMessages) return
-    const text = messages
-      .map(
-        (m) =>
-          `**${m.role === "user" ? "我" : "助手"}**:\n${m.content}`,
-      )
-      .join("\n\n---\n\n")
+    if (!hasMessages || copying) return
+    setCopying(true)
     try {
-      await navigator.clipboard.writeText(text)
+      const conversation = messages
+        .map(
+          (m) =>
+            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${m.content}`,
+        )
+        .join("\n\n---\n\n")
+
+      // 从所有消息中收集文件 token 路径,展开为 <files>...</files> 上下文
+      const paths = extractFilePathsFromMessages(messages.map((m) => m.content))
+      const filesContext = await buildFilesContext(paths)
+
+      // 将文件上下文置于对话之前
+      let finalText = filesContext
+        ? `${filesContext}\n\n${conversation}`
+        : conversation
+
+      // 若最后一条消息是用户发送的，则追加 Assistant 的答复引导后缀
+      if (messages[messages.length - 1].role === "user") {
+        finalText += "\n\n---\n\nPlease provide the assistant's response:"
+      }
+
+      await navigator.clipboard.writeText(finalText)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch (err) {
       console.error("复制失败:", err)
       throw err
+    } finally {
+      setCopying(false)
     }
   }
 
@@ -75,12 +98,18 @@ export function ChatToolbar({
       {/* 复制全部 */}
       <div className="relative">
         <IconButton
-          title={copied ? "已复制" : "复制全部"}
+          title={
+            copying ? "正在收集文件..." : copied ? "已复制" : "复制全部(含文件内容)"
+          }
           onClick={handleCopyAll}
-          disabled={!hasMessages}
+          disabled={!hasMessages || copying}
           highlighted={copied}
         >
-          <Copy className="h-3.5 w-3.5" />
+          {copying ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Copy className="h-3.5 w-3.5" />
+          )}
         </IconButton>
         {copied && (
           <div
