@@ -1,5 +1,5 @@
-import { Bot, MessagesSquare, Sparkles, User } from "lucide-react"
-import { useEffect, useRef } from "react"
+import { Bot, Check, MessagesSquare, Pencil, Sparkles, Trash2, User, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -14,6 +14,8 @@ interface ChatPanelProps {
   onSend: (content: string) => void
   onClear: () => void
   onOpenHistory?: () => void
+  onDeleteMessage?: (id: number) => void
+  onEditMessage?: (id: number, newContent: string) => void
   templates: Template[]
   selectedTemplateIds: Set<number>
   onToggleTemplate: (id: number) => void
@@ -27,6 +29,8 @@ export function ChatPanel({
   onSend,
   onClear,
   onOpenHistory,
+  onDeleteMessage,
+  onEditMessage,
   templates,
   selectedTemplateIds,
   onToggleTemplate,
@@ -101,6 +105,8 @@ export function ChatPanel({
                     key={msg.id}
                     msg={msg}
                     isGrouped={isGrouped}
+                    onDelete={onDeleteMessage}
+                    onEdit={onEditMessage}
                   />
                 )
               })}
@@ -136,11 +142,25 @@ export function ChatPanel({
 function MessageBubble({
   msg,
   isGrouped,
+  onDelete,
+  onEdit,
 }: {
   msg: ChatMessage
   isGrouped: boolean
+  onDelete?: (id: number) => void
+  onEdit?: (id: number, newContent: string) => void
 }) {
+  const [editing, setEditing] = useState(false)
+  const [editContent, setEditContent] = useState(msg.content)
   const isUser = msg.role === "user"
+
+  const handleSave = () => {
+    if (editContent.trim() !== msg.content.trim() && onEdit && typeof msg.id === "number") {
+      onEdit(msg.id, editContent)
+    }
+    setEditing(false)
+  }
+
   return (
     <div
       className={cn(
@@ -177,21 +197,75 @@ function MessageBubble({
       >
         <div
           className={cn(
-            "min-w-0 max-w-full overflow-hidden break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
+            "group/content relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
             isUser
-              ? // 主色气泡:降低视觉重量——去阴影 + 顶角收敛,让 AI 内容成为焦点
-                cn(
+              ? cn(
                   "bg-primary/95 text-primary-foreground",
                   isGrouped ? "rounded-tr-2xl" : "rounded-tr-md",
                 )
-              : // AI 气泡:细描边 + 极浅底色
-                cn(
+              : cn(
                   "border border-border/70 bg-muted/30 text-foreground",
                   isGrouped ? "rounded-tl-2xl" : "rounded-tl-md",
                 ),
           )}
         >
-          <MessageContent content={msg.content} inverted={isUser} />
+          {editing ? (
+            <div className="flex min-w-[300px] flex-col gap-2">
+              <textarea
+                className="min-h-[100px] w-full resize-y rounded bg-background/50 p-2 text-foreground outline-none focus:ring-1 focus:ring-ring"
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+              />
+              <div className="flex justify-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(false)
+                    setEditContent(msg.content)
+                  }}
+                  className="rounded p-1 hover:bg-muted/50"
+                >
+                  <X className="h-3 w-3 text-current" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="rounded p-1 hover:bg-muted/50"
+                >
+                  <Check className="h-3 w-3 text-current" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <MessageContent content={msg.content} inverted={isUser} />
+          )}
+
+          {/* 悬浮操作区 */}
+          {!editing && typeof msg.id === "number" && (
+            <div
+              className={cn(
+                "absolute top-0 -mt-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover/content:opacity-100",
+                isUser ? "right-full mr-2" : "left-full ml-2",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                title="编辑消息"
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onDelete && onDelete(msg.id as number)}
+                title="删除消息"
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          )}
         </div>
         <span
           className={cn(

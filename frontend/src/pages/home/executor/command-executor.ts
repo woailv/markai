@@ -37,10 +37,12 @@ export interface ExecResultBase {
 export interface ExecutionReport {
   results: ExecResultBase[]
   aborted: boolean
+  batchId?: number
 }
 
 export async function executeCommands(
   items: ParseItem[],
+  batchId?: number,
 ): Promise<ExecutionReport> {
   const results: ExecResultBase[] = []
   let aborted = false
@@ -71,7 +73,7 @@ export async function executeCommands(
 
     const started = performance.now()
     try {
-      const r = await runOne(item)
+      const r = await runOne(item, batchId)
       r.durationMs = Math.round(performance.now() - started)
       results.push(r)
       if (r.status === "error") aborted = true
@@ -88,10 +90,10 @@ export async function executeCommands(
     }
   }
 
-  return { results, aborted }
+  return { results, aborted, batchId }
 }
 
-async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
+async function runOne(cmd: ParsedCommand, batchId?: number): Promise<ExecResultBase> {
   switch (cmd.kind) {
     case "WRITE_FILE": {
       // 检测是否覆盖已有文件 → 需确认
@@ -116,6 +118,7 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
       const result = await FileService.Write({
         path: cmd.path,
         content: cmd.content,
+        batchId,
       })
       return {
         kind: cmd.kind,
@@ -155,7 +158,7 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
       const finalContent = originalUsesCRLF
         ? applied.content.replace(/\r?\n/g, "\r\n")
         : applied.content
-      await FileService.Write({ path: cmd.path, content: finalContent })
+      await FileService.Write({ path: cmd.path, content: finalContent, batchId })
       return {
         kind: cmd.kind,
         status: "success",
@@ -181,7 +184,11 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
           durationMs: 0,
         }
       }
-      await FileService.Delete(cmd.path)
+      if (batchId) {
+        await FileService.DeleteWithBatch({ path: cmd.path, batchId })
+      } else {
+        await FileService.Delete(cmd.path)
+      }
       return {
         kind: cmd.kind,
         status: "success",
@@ -207,6 +214,7 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
       await FileService.Move({
         source: cmd.source,
         destination: cmd.destination,
+        batchId,
       })
       return {
         kind: cmd.kind,
@@ -218,7 +226,11 @@ async function runOne(cmd: ParsedCommand): Promise<ExecResultBase> {
     }
 
     case "CREATE_DIRECTORY": {
-      await FileService.CreateDirectory(cmd.path)
+      if (batchId) {
+        await FileService.CreateDirectoryWithBatch({ path: cmd.path, batchId })
+      } else {
+        await FileService.CreateDirectory(cmd.path)
+      }
       return {
         kind: cmd.kind,
         status: "success",

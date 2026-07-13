@@ -7,11 +7,15 @@ import {
   MinusCircle,
   SlashSquare,
 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
+import { SnapshotService } from "@/../bindings/prompttool/internal/services"
+import type { BatchStatus } from "@/../bindings/prompttool/internal/services/models"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 import type { ExecResultBase, ExecutionReport } from "./command-executor"
+import { confirmDestructive } from "./confirm-dialog"
 
 /**
  * 执行回执消息的载体格式。
@@ -70,6 +74,43 @@ export function ExecStatusView({ pending }: { pending: number }) {
 }
 
 export function ExecReportView({ report }: { report: ExecutionReport }) {
+  const [batchStatus, setBatchStatus] = useState<BatchStatus | null>(null)
+  const [undoing, setUndoing] = useState(false)
+
+  useEffect(() => {
+    if (report.batchId) {
+      SnapshotService.Status(report.batchId).then(setBatchStatus).catch(console.error)
+    }
+  }, [report.batchId])
+
+  const handleUndo = async () => {
+    if (!report.batchId || !batchStatus || undoing) return
+    if (batchStatus.undoneAt) return
+
+    let desc = "确认撤销此批次修改？将还原所有涉及的文件到执行前的状态。"
+    if (batchStatus.staleWarning) {
+      desc = "警告：此批次中的某些文件在此后又被修改过。撤销将覆盖那些较新的修改，确认继续？"
+    }
+
+    const ok = await confirmDestructive({
+      title: "撤销文件修改",
+      description: desc,
+      destructiveLabel: "确认撤销",
+    })
+    if (!ok) return
+
+    setUndoing(true)
+    try {
+      await SnapshotService.Undo(report.batchId)
+      const newStatus = await SnapshotService.Status(report.batchId)
+      setBatchStatus(newStatus)
+    } catch (err) {
+      alert(`撤销失败: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setUndoing(false)
+    }
+  }
+
   const okCount = report.results.filter((r) => r.status === "success").length
   const errCount = report.results.filter((r) => r.status === "error").length
   const cancelCount = report.results.filter(
@@ -90,6 +131,32 @@ export function ExecReportView({ report }: { report: ExecutionReport }) {
         )}
         {skipCount > 0 && (
           <SummaryPill tone="muted" label={`${skipCount} 已跳过`} />
+        )}
+        {report.batchId && report.batchId > 0 && batchStatus && (
+          <div className="ml-auto flex items-center gap-2">
+            {batchStatus.undoneAt ? (
+              <span className="text-[10px] text-muted-foreground line-through">已撤销修改</span>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={undoing}
+                onClick={handleUndo}
+                className={cn(
+                  "h-6 px-2 text-[10px]",
+                  batchStatus.staleWarning &&
+                    "border-amber-500/50 text-amber-600 dark:text-amber-400",
+                )}
+              >
+                {undoing
+                  ? "撤销中..."
+                  : batchStatus.staleWarning
+                    ? "撤销(有覆盖风险)"
+                    : "撤销修改"}
+              </Button>
+            )}
+          </div>
         )}
       </div>
       <ol className="space-y-1">

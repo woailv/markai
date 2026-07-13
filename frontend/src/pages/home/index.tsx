@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
+import {
+  ConversationService,
+  PromptTemplateService,
+  SnapshotService,
+} from "@/../bindings/prompttool/internal/services"
+import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
 import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 
 import { ChatPanel } from "./chat-panel"
@@ -10,7 +15,8 @@ import {
   COMMAND_TAG_DETECT_RE,
   parseCommands,
 } from "./executor/command-parser"
-import { ConfirmDialogHost } from "./executor/confirm-dialog"
+import { ConfirmDialogHost, confirmDestructive } from "./executor/confirm-dialog"
+import { HistorySidebar } from "./history-sidebar"
 import {
   encodeExecReport,
   encodeExecStatus,
@@ -25,6 +31,9 @@ export default function HomePage() {
     new Set(),
   )
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [conversations, setConversations] = useState<ConversationSummary[]>([])
+  const [activeConvId, setActiveConvId] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const loadTemplates = useCallback(async () => {
     const list = (await PromptTemplateService.List()) ?? []
@@ -40,20 +49,81 @@ export default function HomePage() {
     })
   }, [])
 
+  const loadConversations = useCallback(async () => {
+    const list = await ConversationService.List()
+    setConversations(list || [])
+  }, [])
+
   useEffect(() => {
     void loadTemplates()
-  }, [loadTemplates])
+    void loadConversations()
+  }, [loadTemplates, loadConversations])
 
-  const handleSend = (content: string) => {
-    const now = new Date().toISOString()
+  const handleSelectConversation = async (id: number) => {
+    const detail = await ConversationService.Get(id)
+    if (detail) {
+      setMessages(
+        (detail.messages || []).map((m) => ({
+          ...m,
+          role: m.role as "user" | "assistant",
+        })),
+      )
+      setActiveConvId(id)
+    }
+  }
 
-    // 若匹配到指令标签，视为 AI 发送的消息
+  const handleNewConversation = () => {
+    setActiveConvId(null)
+    setMessages([])
+  }
+
+  const handleDeleteConversation = async (
+    id: number,
+    e: React.MouseEvent,
+  ) => {
+    e.stopPropagation()
+    const ok = await confirmDestructive({
+      title: "删除会话",
+      description: "将删除该会话及所有消息记录，确定继续？",
+      destructiveLabel: "删除",
+    })
+    if (ok) {
+      await ConversationService.Delete(id)
+      await loadConversations()
+      if (activeConvId === id) handleNewConversation()
+    }
+  }
+
+  const handleDeleteMessage = async (msgId: number) => {
+    const ok = await confirmDestructive({
+      title: "删除消息",
+      description: "将删除此消息，确定继续？",
+      destructiveLabel: "删除",
+    })
+    if (ok) {
+      await ConversationService.DeleteMessage(msgId)
+      setMessages((prev) => prev.filter((m) => m.id !== msgId))
+      loadConversations()
+    }
+  }
+
+  const handleEditMessage = async (msgId: number, newContent: string) => {
+    const updated = await ConversationService.UpdateMessage({
+      messageId: msgId,
+      content: newContent,
+    })
+    if (updated) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msgId ? { ...m, content: newContent } : m)),
+      )
+    }
+  }
+
+  const handleSend = async (content: string) => {
     const isAssistant = COMMAND_TAG_DETECT_RE.test(content)
     let payload = content
 
-    // 仅在真实用户发送时，才消耗性能组装已选模板上下文
     if (!isAssistant) {
-      // 用户正文中的文件标签已由 RichComposer 通过 documentToPlainText 还原为绝对路径。
       const templateBlocks = templates
         .filter((t) => selectedTemplateIds.has(t.id))
         .map((tpl) => {
@@ -68,60 +138,110 @@ export default function HomePage() {
       }
     }
 
-    const messageId = `${isAssistant ? "a" : "u"}-${Date.now()}`
+    // 乐观更新 UI
+    const tempId = `temp-${Date.now()}`
     setMessages((prev) => [
       ...prev,
       {
-        id: messageId,
+        id: tempId,
         role: isAssistant ? "assistant" : "user",
         content: payload,
-        createdAt: now,
+        createdAt: new Date().toISOString(),
       },
     ])
 
-    if (isAssistant) {
-      void runCommandPipeline(payload)
+    try {
+      const res = await ConversationService.AppendMessage({
+        conversationId: activeConvId || 0,
+        role: isAssistant ? "assistant" : "user",
+        content: payload,
+        batchId: 0,
+      })
+
+      if (res) {
+        if (res.createdNew) {
+          setActiveConvId(res.conversationId)
+          await loadConversations()
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId
+              ? {
+                  ...res.message,
+                  role: res.message.role as "user" | "assistant",
+                }
+              : m,
+          ),
+        )
+
+        if (isAssistant) {
+          void runCommandPipeline(payload, res.conversationId, res.message.id)
+        }
+      }
+    } catch (err) {
+      console.error("Failed to append message", err)
     }
-    // 注意:发送后保留模板选中状态,便于连续对话复用。
   }
 
-  /**
-   * 解析 AI 消息中的指令 → 追加执行中占位 → 顺序执行 → 用结构化回执替换占位。
-   * 若消息中未包含可解析指令,不追加任何回执,保持消息本身可见。
-   */
-  const runCommandPipeline = async (content: string) => {
+  const runCommandPipeline = async (
+    content: string,
+    convId: number,
+    sourceMsgId: number,
+  ) => {
     const items = parseCommands(content)
     if (items.length === 0) return
 
-    const statusId = `exec-${Date.now()}`
-    const now = new Date().toISOString()
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: statusId,
-        role: "assistant",
-        content: encodeExecStatus(items.length),
-        createdAt: now,
-      },
-    ])
+    // 1. 开始批次
+    const batchRes = await SnapshotService.BeginBatch({
+      conversationId: convId,
+      messageId: sourceMsgId,
+    })
+    const batchId = batchRes?.batchId || 0
 
-    const report = await executeCommands(items)
+    // 2. 追加占位消息
+    const statusMsgRes = await ConversationService.AppendMessage({
+      conversationId: convId,
+      role: "assistant",
+      content: encodeExecStatus(items.length),
+      batchId: batchId,
+    })
 
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === statusId
-          ? {
-              ...m,
-              content: encodeExecReport(report),
-              createdAt: new Date().toISOString(),
-            }
-          : m,
-      ),
-    )
+    const statusMsg = statusMsgRes?.message
+    if (statusMsg) {
+      setMessages((prev) => [
+        ...prev,
+        { ...statusMsg, role: "assistant" },
+      ])
+    }
+
+    // 3. 执行
+    const report = await executeCommands(items, batchId)
+    report.batchId = batchId
+
+    // 4. 更新占位消息内容
+    if (statusMsg) {
+      const finalContent = encodeExecReport(report)
+      await ConversationService.UpdateMessage({
+        messageId: statusMsg.id,
+        content: finalContent,
+      })
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === statusMsg.id ? { ...m, content: finalContent } : m,
+        ),
+      )
+    }
   }
 
-  const handleClear = () => {
-    setMessages([])
+  const handleClear = async () => {
+    if (activeConvId) {
+      await ConversationService.Delete(activeConvId)
+      await loadConversations()
+      handleNewConversation()
+    } else {
+      setMessages([])
+    }
   }
 
   const handleToggleTemplate = (id: number) => {
@@ -148,10 +268,22 @@ export default function HomePage() {
 
   return (
     <div className="flex h-svh overflow-hidden">
+      {sidebarOpen && (
+        <HistorySidebar
+          conversations={conversations}
+          activeId={activeConvId}
+          onSelect={handleSelectConversation}
+          onNew={handleNewConversation}
+          onDelete={handleDeleteConversation}
+        />
+      )}
       <ChatPanel
         messages={messages}
         onSend={handleSend}
         onClear={handleClear}
+        onOpenHistory={() => setSidebarOpen((v) => !v)}
+        onDeleteMessage={handleDeleteMessage}
+        onEditMessage={handleEditMessage}
         templates={templates}
         selectedTemplateIds={selectedTemplateIds}
         onToggleTemplate={handleToggleTemplate}
