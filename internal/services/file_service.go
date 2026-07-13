@@ -71,6 +71,12 @@ func (s *FileService) Write(in WriteFileInput) (*WriteFileResult, error) {
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		return nil, fmt.Errorf("file: mkdir parent %q: %w", abs, err)
 	}
+	// 若目标文件存在且只读,先清除只读属性,否则 Windows 上会 Access is denied。
+	if !created {
+		if err := clearReadOnly(abs); err != nil {
+			return nil, fmt.Errorf("file: clear readonly %q: %w", abs, err)
+		}
+	}
 	if err := os.WriteFile(abs, []byte(in.Content), 0o644); err != nil {
 		return nil, fmt.Errorf("file: write %q: %w", abs, err)
 	}
