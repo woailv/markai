@@ -96,6 +96,11 @@ export interface ConversationSummary {
     "messageCount": number;
 
     /**
+     * 该会话关联的模板集合
+     */
+    "templateIds": number[] | null;
+
+    /**
      * RFC3339
      */
     "createdAt": string;
@@ -190,6 +195,14 @@ export interface ReadFileResult {
 export interface RenameConversationInput {
     "conversationId": number;
     "title": string;
+}
+
+/**
+ * SetTemplatesInput 保存会话启用的模板集合。
+ */
+export interface SetTemplatesInput {
+    "conversationId": number;
+    "templateIds": number[] | null;
 }
 
 /**

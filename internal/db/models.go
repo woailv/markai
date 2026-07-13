@@ -58,3 +58,14 @@ type FileSnapshot struct {
 }
 
 func (FileSnapshot) TableName() string { return "file_snapshots" }
+
+// ConversationTemplate 会话与 PromptTemplate 的多对多关联表。
+// 用于持久化某会话当前启用的模板集合,刷新后可直接恢复。
+type ConversationTemplate struct {
+	ID             uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConversationID uint64    `gorm:"not null;uniqueIndex:idx_conv_tpl_unique,priority:1;index" json:"conversationId"`
+	TemplateID     uint      `gorm:"not null;uniqueIndex:idx_conv_tpl_unique,priority:2" json:"templateId"`
+	CreatedAt      time.Time `gorm:"not null" json:"createdAt"`
+}
+
+func (ConversationTemplate) TableName() string { return "conversation_templates" }

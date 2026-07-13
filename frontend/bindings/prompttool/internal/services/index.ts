@@ -32,6 +32,7 @@ export type {
     PromptTemplate,
     ReadFileResult,
     RenameConversationInput,
+    SetTemplatesInput,
     UndoBatchResult,
     UpdateInput,
     UpdateMessageInput,

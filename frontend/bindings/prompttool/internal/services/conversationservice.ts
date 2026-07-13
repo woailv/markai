@@ -23,6 +23,13 @@ export function AppendMessage($in: $models.AppendMessageInput): $CancellableProm
 }
 
 /**
+ * ClearMessages 清空消息接口（不删除会话，不影响绑定的模板）
+ */
+export function ClearMessages(id: number): $CancellablePromise<void> {
+    return $Call.ByID(1339267167, id);
+}
+
+/**
  * Delete 删除会话及其全部消息与快照批次。
  */
 export function Delete(id: number): $CancellablePromise<void> {
@@ -56,6 +63,13 @@ export function List(): $CancellablePromise<$models.ConversationSummary[] | null
  */
 export function Rename($in: $models.RenameConversationInput): $CancellablePromise<void> {
     return $Call.ByID(502248480, $in);
+}
+
+/**
+ * SetTemplates 覆盖设置会话绑定的模板集合 (前端多选框切换时调用)
+ */
+export function SetTemplates($in: $models.SetTemplatesInput): $CancellablePromise<void> {
+    return $Call.ByID(1164954265, $in);
 }
 
 /**

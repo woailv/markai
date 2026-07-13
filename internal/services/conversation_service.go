@@ -29,6 +29,9 @@ func NewConversationService(database *db.DB) (*ConversationService, error) {
 	if database == nil {
 		return nil, errors.New("conversation: nil db")
 	}
+	if err := database.AutoMigrate(&db.ConversationTemplate{}); err != nil {
+		return nil, fmt.Errorf("conversation: migrate templates: %w", err)
+	}
 	return &ConversationService{db: database}, nil
 }
 
@@ -42,9 +45,37 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 		Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("conversation: list: %w", err)
 	}
+	if len(rows) == 0 {
+		return []ConversationSummary{}, nil
+	}
+	
+	// 避免 N+1, 批量获取所有会话的关联模板
+	ids := make([]uint64, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	var links []db.ConversationTemplate
+	if err := s.db.
+		Where("conversation_id IN ?", ids).
+		Order("conversation_id ASC, id ASC").
+		Find(&links).Error; err != nil {
+		return nil, fmt.Errorf("conversation: load templates: %w", err)
+	}
+	
+	tplByConv := make(map[uint64][]uint, len(rows))
+	for _, l := range links {
+		tplByConv[l.ConversationID] = append(tplByConv[l.ConversationID], l.TemplateID)
+	}
+	
 	out := make([]ConversationSummary, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, toConversationSummary(r))
+		sum := toConversationSummary(r)
+		if tpls := tplByConv[r.ID]; tpls != nil {
+			sum.TemplateIDs = tpls
+		} else {
+			sum.TemplateIDs = []uint{} // 保证给前端的是空数组而不是 null
+		}
+		out = append(out, sum)
 	}
 	return out, nil
 }
@@ -68,12 +99,27 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		Find(&msgs).Error; err != nil {
 		return nil, fmt.Errorf("conversation: load messages: %w", err)
 	}
+	
+	// 加载会话绑定的模板 ID
+	var links []db.ConversationTemplate
+	if err := s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&links).Error; err != nil {
+		return nil, fmt.Errorf("conversation: load templates: %w", err)
+	}
+	tplIDs := make([]uint, 0, len(links))
+	for _, l := range links {
+		tplIDs = append(tplIDs, l.TemplateID)
+	}
+
 	dtos := make([]MessageDTO, 0, len(msgs))
 	for _, m := range msgs {
 		dtos = append(dtos, toMessageDTO(m))
 	}
+	
+	summary := toConversationSummary(conv)
+	summary.TemplateIDs = tplIDs
+
 	return &ConversationDetail{
-		Conversation: toConversationSummary(conv),
+		Conversation: summary,
 		Messages:     dtos,
 	}, nil
 }
@@ -134,8 +180,99 @@ func (s *ConversationService) Delete(id uint64) error {
 			Delete(&db.Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete messages: %w", err)
 		}
+		// 级联清理模板关联
+		if err := tx.Where("conversation_id = ?", id).
+			Delete(&db.ConversationTemplate{}).Error; err != nil {
+			return fmt.Errorf("conversation: delete template links: %w", err)
+		}
 		if err := tx.Delete(&db.Conversation{}, id).Error; err != nil {
 			return fmt.Errorf("conversation: delete: %w", err)
+		}
+		return nil
+	})
+}
+
+// ClearMessages 清空消息接口（不删除会话，不影响绑定的模板）
+func (s *ConversationService) ClearMessages(id uint64) error {
+	if id == 0 {
+		return errors.New("conversation: id required")
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var batches []db.SnapshotBatch
+		if err := tx.Where("conversation_id = ?", id).Find(&batches).Error; err != nil {
+			return fmt.Errorf("conversation: load batches: %w", err)
+		}
+		if len(batches) > 0 {
+			ids := make([]uint64, 0, len(batches))
+			for _, b := range batches {
+				ids = append(ids, b.ID)
+			}
+			if err := tx.Where("batch_id IN ?", ids).Delete(&db.FileSnapshot{}).Error; err != nil {
+				return fmt.Errorf("conversation: delete snapshots: %w", err)
+			}
+			if err := tx.Where("conversation_id = ?", id).Delete(&db.SnapshotBatch{}).Error; err != nil {
+				return fmt.Errorf("conversation: delete batches: %w", err)
+			}
+		}
+		if err := tx.Where("conversation_id = ?", id).Delete(&db.Message{}).Error; err != nil {
+			return fmt.Errorf("conversation: clear messages: %w", err)
+		}
+		
+		// 重置计数
+		if err := tx.Model(&db.Conversation{}).Where("id = ?", id).
+			Updates(map[string]any{
+				"message_count": 0,
+				"updated_at":    time.Now(),
+			}).Error; err != nil {
+			return fmt.Errorf("conversation: reset counters: %w", err)
+		}
+		return nil
+	})
+}
+
+// SetTemplates 覆盖设置会话绑定的模板集合 (前端多选框切换时调用)
+func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
+	if in.ConversationID == 0 {
+		return errors.New("conversation: id required")
+	}
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 去重处理
+		seen := make(map[uint]struct{}, len(in.TemplateIDs))
+		uniq := make([]uint, 0, len(in.TemplateIDs))
+		for _, tid := range in.TemplateIDs {
+			if tid == 0 || seen[tid] == struct{}{} {
+				continue
+			}
+			seen[tid] = struct{}{}
+			uniq = append(uniq, tid)
+		}
+
+		// 先全量删除旧绑定
+		if err := tx.Where("conversation_id = ?", in.ConversationID).
+			Delete(&db.ConversationTemplate{}).Error; err != nil {
+			return fmt.Errorf("conversation: clear template links: %w", err)
+		}
+
+		// 重建新绑定
+		if len(uniq) > 0 {
+			now := time.Now()
+			links := make([]db.ConversationTemplate, 0, len(uniq))
+			for _, tid := range uniq {
+				links = append(links, db.ConversationTemplate{
+					ConversationID: in.ConversationID,
+					TemplateID:     tid,
+					CreatedAt:      now,
+				})
+			}
+			if err := tx.Create(&links).Error; err != nil {
+				return fmt.Errorf("conversation: save template links: %w", err)
+			}
+		}
+		
+		// 更新会话 updatedAt
+		if err := tx.Model(&db.Conversation{}).Where("id = ?", in.ConversationID).
+			Update("updated_at", time.Now()).Error; err != nil {
+			return fmt.Errorf("conversation: bump updated_at: %w", err)
 		}
 		return nil
 	})

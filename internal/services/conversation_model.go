@@ -6,6 +6,7 @@ type ConversationSummary struct {
 	Title           string `json:"title"`
 	TitleOverridden bool   `json:"titleOverridden"`
 	MessageCount    int    `json:"messageCount"`
+	TemplateIDs     []uint `json:"templateIds"` // 该会话关联的模板集合
 	CreatedAt       string `json:"createdAt"` // RFC3339
 	UpdatedAt       string `json:"updatedAt"`
 }
@@ -53,4 +54,10 @@ type UpdateMessageInput struct {
 type RenameConversationInput struct {
 	ConversationID uint64 `json:"conversationId"`
 	Title          string `json:"title"`
+}
+
+// SetTemplatesInput 保存会话启用的模板集合。
+type SetTemplatesInput struct {
+	ConversationID uint64 `json:"conversationId"`
+	TemplateIDs    []uint `json:"templateIds"`
 }
