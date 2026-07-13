@@ -15,8 +15,8 @@ const (
 	roleUser      = "user"
 	roleAssistant = "assistant"
 
-	titleFallback   = "新会话"
-	titleMaxRunes   = 40
+	titleFallback = "新会话"
+	titleMaxRunes = 40
 )
 
 // ConversationService 提供会话与消息的持久化能力。
@@ -48,7 +48,7 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 	if len(rows) == 0 {
 		return []ConversationSummary{}, nil
 	}
-	
+
 	// 避免 N+1, 批量获取所有会话的关联模板
 	ids := make([]uint64, 0, len(rows))
 	for _, r := range rows {
@@ -61,12 +61,12 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 		Find(&links).Error; err != nil {
 		return nil, fmt.Errorf("conversation: load templates: %w", err)
 	}
-	
+
 	tplByConv := make(map[uint64][]uint, len(rows))
 	for _, l := range links {
 		tplByConv[l.ConversationID] = append(tplByConv[l.ConversationID], l.TemplateID)
 	}
-	
+
 	out := make([]ConversationSummary, 0, len(rows))
 	for _, r := range rows {
 		sum := toConversationSummary(r)
@@ -99,7 +99,7 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		Find(&msgs).Error; err != nil {
 		return nil, fmt.Errorf("conversation: load messages: %w", err)
 	}
-	
+
 	// 加载会话绑定的模板 ID
 	var links []db.ConversationTemplate
 	if err := s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&links).Error; err != nil {
@@ -114,7 +114,7 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 	for _, m := range msgs {
 		dtos = append(dtos, toMessageDTO(m))
 	}
-	
+
 	summary := toConversationSummary(conv)
 	summary.TemplateIDs = tplIDs
 
@@ -217,7 +217,7 @@ func (s *ConversationService) ClearMessages(id uint64) error {
 		if err := tx.Where("conversation_id = ?", id).Delete(&db.Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: clear messages: %w", err)
 		}
-		
+
 		// 重置计数
 		if err := tx.Model(&db.Conversation{}).Where("id = ?", id).
 			Updates(map[string]any{
@@ -240,7 +240,10 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 		seen := make(map[uint]struct{}, len(in.TemplateIDs))
 		uniq := make([]uint, 0, len(in.TemplateIDs))
 		for _, tid := range in.TemplateIDs {
-			if tid == 0 || seen[tid] == struct{}{} {
+			if tid == 0 {
+				continue
+			}
+			if _, ok := seen[tid]; ok {
 				continue
 			}
 			seen[tid] = struct{}{}
@@ -268,7 +271,7 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 				return fmt.Errorf("conversation: save template links: %w", err)
 			}
 		}
-		
+
 		// 更新会话 updatedAt
 		if err := tx.Model(&db.Conversation{}).Where("id = ?", in.ConversationID).
 			Update("updated_at", time.Now()).Error; err != nil {
