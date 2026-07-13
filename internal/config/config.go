@@ -38,7 +38,7 @@ func Default() AppConfig {
 // DefaultWindow 返回默认主窗口配置。
 func DefaultWindow() WindowConfig {
 	return WindowConfig{
-		Title:      "Window 1",
+		Title:      "提示词助手",
 		Width:      1000,
 		Height:     618,
 		Background: application.NewRGB(200, 200, 200),
