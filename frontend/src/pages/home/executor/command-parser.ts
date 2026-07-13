@@ -26,14 +26,29 @@
  *   - WRITE_FILE / EDIT_FILE 的正文再走各自的次级解析。
  */
 
-export type CommandKind =
-    | "WRITE_FILE"
-    | "EDIT_FILE"
-    | "DELETE_FILE"
-    | "MOVE_PATH"
-    | "CREATE_DIRECTORY"
-    | "REQUEST_DIRECTORY_LIST"
-    | "REQUEST_FILE"
+/** 所有受支持的指令标签名。作为单一事实源,派生类型与运行时正则均以此为准。 */
+export const COMMAND_TAG_NAMES = [
+    "WRITE_FILE",
+    "EDIT_FILE",
+    "DELETE_FILE",
+    "MOVE_PATH",
+    "CREATE_DIRECTORY",
+    "REQUEST_DIRECTORY_LIST",
+    "REQUEST_FILE",
+] as const
+
+export type CommandKind = (typeof COMMAND_TAG_NAMES)[number]
+
+/** 用于在正则中匹配任一指令标签名的 alternation 片段。 */
+const COMMAND_TAG_ALTERNATION = COMMAND_TAG_NAMES.join("|")
+
+/**
+ * 快速检测:文本中是否包含形如 `<TAG ` / `<TAG>` / `<TAG/>` 的指令标签头。
+ * 用于上层判定"这条消息是否为 AI 编辑协议消息",不要求完整解析。
+ */
+export const COMMAND_TAG_DETECT_RE = new RegExp(
+    `<(?:${COMMAND_TAG_ALTERNATION})(?=[\\s/>])`,
+)
 
 export interface SearchReplaceBlock {
     search: string
@@ -96,8 +111,10 @@ export interface ParseError {
 export type ParseItem = ParsedCommand | ParseError
 
 /** 匹配一个完整的指令标签块(自闭合或成对) */
-const COMMAND_BLOCK_RE =
-    /<(WRITE_FILE|EDIT_FILE|DELETE_FILE|MOVE_PATH|CREATE_DIRECTORY|REQUEST_DIRECTORY_LIST|REQUEST_FILE)\b([^>]*?)(?:\/>|>([\s\S]*?)<\/\1\s*>)/g
+const COMMAND_BLOCK_RE = new RegExp(
+    `<(${COMMAND_TAG_ALTERNATION})\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/\\1\\s*>)`,
+    "g",
+)
 
 /** 提取标签属性 name="value" 或 name='value' */
 function parseAttrs(raw: string): Record<string, string> {

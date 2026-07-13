@@ -6,7 +6,10 @@ import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 
 import { ChatPanel } from "./chat-panel"
 import { executeCommands } from "./executor/command-executor"
-import { parseCommands } from "./executor/command-parser"
+import {
+  COMMAND_TAG_DETECT_RE,
+  parseCommands,
+} from "./executor/command-parser"
 import { ConfirmDialogHost } from "./executor/confirm-dialog"
 import {
   encodeExecReport,
@@ -15,10 +18,6 @@ import {
 import { MOCK_MESSAGES } from "./mock-data"
 import type { ChatMessage, Template } from "./types"
 import { buildTemplatePreview } from "./utils"
-
-// 用于检测发送内容是否为编辑协议指令 (精确匹配 XML 标签头)
-const COMMAND_TAG_RE =
-  /<(?:WRITE_FILE|EDIT_FILE|DELETE_FILE|MOVE_PATH|CREATE_DIRECTORY|REQUEST_DIRECTORY_LIST|REQUEST_FILE)(?=[\s/>])/
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -50,7 +49,7 @@ export default function HomePage() {
     const now = new Date().toISOString()
 
     // 若匹配到指令标签，视为 AI 发送的消息
-    const isAssistant = COMMAND_TAG_RE.test(content)
+    const isAssistant = COMMAND_TAG_DETECT_RE.test(content)
     let payload = content
 
     // 仅在真实用户发送时，才消耗性能组装已选模板上下文
