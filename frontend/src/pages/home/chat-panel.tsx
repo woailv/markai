@@ -69,7 +69,7 @@ export function ChatPanel({
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       {/* Header - 极简 + 工具条 */}
       <div className="shrink-0 border-b px-4 py-2">
-        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3">
+        <div className="flex w-full items-center justify-between gap-3">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
             <Sparkles className="h-3.5 w-3.5 text-primary" />
             会话
@@ -92,7 +92,7 @@ export function ChatPanel({
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
       >
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="w-full">
           {messages.length === 0 ? (
             <EmptyState />
           ) : (
@@ -117,7 +117,7 @@ export function ChatPanel({
 
       {/* Composer */}
       <div className="shrink-0 border-t bg-background/50 px-4 py-3">
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="w-full">
           <RichComposer
             onSend={onSend}
             templates={templates}
