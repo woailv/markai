@@ -1,5 +1,5 @@
 import { Events } from "@wailsio/runtime"
-import { Bot, Check, MessagesSquare, Pencil, Sparkles, Trash2, User, X } from "lucide-react"
+import { Bot, Check, Copy, MessagesSquare, Pencil, Sparkles, Trash2, User, X } from "lucide-react"
 import {
   useCallback,
   useEffect,
@@ -164,7 +164,21 @@ function MessageBubble({
 }) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(msg.content)
+  const [copied, setCopied] = useState(false)
   const isUser = msg.role === "user"
+
+  const handleCopy = async () => {
+    try {
+      const plain = documentToPlainText(msg.content)
+      const text =
+        typeof plain === "string" ? plain : String(plain ?? "")
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // 忽略剪贴板失败(无权限等),避免打断用户
+    }
+  }
 
   const handleSave = () => {
     if (editContent.trim() !== msg.content.trim() && onEdit && typeof msg.id === "number") {
@@ -242,14 +256,26 @@ function MessageBubble({
             <MessageContent content={msg.content} inverted={isUser} />
           )}
 
-          {/* 悬浮操作区 */}
+          {/* 悬浮操作区:与消息底部对齐 */}
           {!editing && typeof msg.id === "number" && (
             <div
               className={cn(
-                "absolute top-0 -mt-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover/content:opacity-100",
+                "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover/content:opacity-100",
                 isUser ? "right-full mr-2" : "left-full ml-2",
               )}
             >
+              <button
+                type="button"
+                onClick={handleCopy}
+                title={copied ? "已复制" : "复制消息"}
+                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {copied ? (
+                  <Check className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </button>
               <button
                 type="button"
                 onClick={handleStartEdit}
