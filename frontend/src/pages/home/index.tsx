@@ -18,10 +18,7 @@ import {
 } from "./executor/command-parser"
 import { ConfirmDialogHost, confirmDestructive } from "./executor/confirm-dialog"
 import { HistorySidebar } from "./history-sidebar"
-import {
-  encodeExecReport,
-  encodeExecStatus,
-} from "./executor/execution-report"
+import { withExecMeta } from "./executor/exec-meta"
 import type { ChatMessage, Template } from "./types"
 import { buildTemplatePreview } from "./utils"
 
@@ -222,6 +219,11 @@ export default function HomePage() {
     }
   }
 
+  /**
+   * 新版执行流水:回执直接写回到同一条 AI 消息的末尾 sentinel,
+   * 由 <AssistantMessage/> 统一渲染"变更单"视图。
+   * 不再插入独立的 __EXEC_STATUS__ / __EXEC_REPORT__ 消息。
+   */
   const runCommandPipeline = async (
     content: string,
     convId: number,
@@ -237,39 +239,39 @@ export default function HomePage() {
     })
     const batchId = batchRes?.batchId || 0
 
-    // 2. 追加占位消息
-    const statusMsgRes = await ConversationService.AppendMessage({
-      conversationId: convId,
-      role: "assistant",
-      content: encodeExecStatus(items.length),
-      batchId: batchId,
+    // 2. 立刻把 pending sentinel 写回消息,驱动"执行中"渲染
+    const pendingContent = withExecMeta(content, {
+      status: "pending",
+      pending: items.length,
     })
-
-    const statusMsg = statusMsgRes?.message
-    if (statusMsg) {
-      setMessages((prev) => [
-        ...prev,
-        { ...statusMsg, role: "assistant" },
-      ])
-    }
+    await ConversationService.UpdateMessage({
+      messageId: sourceMsgId,
+      content: pendingContent,
+    })
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === sourceMsgId ? { ...m, content: pendingContent } : m,
+      ),
+    )
 
     // 3. 执行
     const report = await executeCommands(items, batchId)
     report.batchId = batchId
 
-    // 4. 更新占位消息内容
-    if (statusMsg) {
-      const finalContent = encodeExecReport(report)
-      await ConversationService.UpdateMessage({
-        messageId: statusMsg.id,
-        content: finalContent,
-      })
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === statusMsg.id ? { ...m, content: finalContent } : m,
-        ),
-      )
-    }
+    // 4. 写回最终回执 sentinel
+    const finalContent = withExecMeta(content, {
+      status: "done",
+      report,
+    })
+    await ConversationService.UpdateMessage({
+      messageId: sourceMsgId,
+      content: finalContent,
+    })
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === sourceMsgId ? { ...m, content: finalContent } : m,
+      ),
+    )
   }
 
   const handleClear = async () => {

@@ -13,10 +13,11 @@ interface MessageContentProps {
 }
 
 /**
- * 消息气泡内容渲染:内核 + 业务壳。
- * 业务职责:
- *  - 执行状态 / 回执消息 短路走结构化组件,不进入内核渲染
- *  - 根据消息角色选择只读模式与反色
+ * 消息气泡内容渲染(仅用于用户消息与老版兼容)。
+ *
+ * AI 消息新展示态由 <AssistantMessage/> 单独负责,不再走这里。
+ * 保留 __EXEC_STATUS__ / __EXEC_REPORT__ 独立消息的兼容渲染,
+ * 用于老会话历史中残留的独立回执消息。
  */
 export function MessageContent({
   content,

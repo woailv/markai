@@ -27,8 +27,10 @@ import {
 } from "@/components/rich-editor"
 import { cn } from "@/lib/utils"
 
+import { AssistantMessage } from "./assistant/assistant-message"
 import { ChatToolbar } from "./chat-toolbar"
 import { RichComposer } from "./composer/rich-composer"
+import { stripExecMeta } from "./executor/exec-meta"
 import {
   buildFilesContext,
   extractFilePathsFromMessages,
@@ -85,21 +87,18 @@ export function ChatPanel({
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !stickToBottomRef.current) return
-    // 用 rAF 确保 DOM 尺寸已更新
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
     })
   }, [messages])
 
-  // 拖拽选择文本时,靠近容器上/下边缘自动滚动,
-  // 解决"选择到底部时不能继续向下选择"的问题。
-  // 原生浏览器只在滚动主视口边缘时自动滚动,嵌套滚动容器需要手动实现。
+  // 拖拽选择文本时,靠近容器上/下边缘自动滚动
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
 
-    const EDGE = 40 // 触发自动滚动的边缘阈值 (px)
-    const MAX_SPEED = 24 // 每帧最大滚动像素
+    const EDGE = 40
+    const MAX_SPEED = 24
 
     let selecting = false
     let pointerY = 0
@@ -115,7 +114,6 @@ export function ChatPanel({
       const distBottom = rect.bottom - pointerY
       let delta = 0
       if (distTop < EDGE && distTop < distBottom) {
-        // 越靠近边缘,速度越大
         const ratio = Math.max(0, Math.min(1, 1 - distTop / EDGE))
         delta = -Math.ceil(MAX_SPEED * ratio)
       } else if (distBottom < EDGE) {
@@ -129,7 +127,6 @@ export function ChatPanel({
     }
 
     const onMouseDown = (e: MouseEvent) => {
-      // 仅左键触发
       if (e.button !== 0) return
       selecting = true
       pointerY = e.clientY
@@ -139,7 +136,6 @@ export function ChatPanel({
     const onMouseMove = (e: MouseEvent) => {
       if (!selecting) return
       pointerY = e.clientY
-      // 无按键(用户已在容器外释放)则终止
       if (e.buttons === 0) {
         selecting = false
       }
@@ -154,7 +150,6 @@ export function ChatPanel({
     }
 
     el.addEventListener("mousedown", onMouseDown)
-    // 监听 window 以便鼠标移出容器/窗口时仍能捕获
     window.addEventListener("mousemove", onMouseMove)
     window.addEventListener("mouseup", stop)
     window.addEventListener("blur", stop)
@@ -172,7 +167,6 @@ export function ChatPanel({
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      {/* Header - 极简 + 工具条 */}
       <div className="shrink-0 border-b px-4 py-2">
         <div className="flex w-full items-center justify-between gap-3">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
@@ -192,7 +186,6 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Messages - 全宽居中 */}
       <div
         ref={scrollRef}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
@@ -205,8 +198,19 @@ export function ChatPanel({
               {messages.map((msg, idx) => {
                 const prev = messages[idx - 1]
                 const isGrouped = prev?.role === msg.role
+                if (msg.role === "assistant") {
+                  return (
+                    <AssistantRow
+                      key={msg.id}
+                      msg={msg}
+                      isGrouped={isGrouped}
+                      onDelete={onDeleteMessage}
+                      onEdit={onEditMessage}
+                    />
+                  )
+                }
                 return (
-                  <MessageBubble
+                  <UserBubble
                     key={msg.id}
                     msg={msg}
                     isGrouped={isGrouped}
@@ -220,7 +224,6 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Composer */}
       <div className="shrink-0 border-t bg-background/50 px-4 py-3">
         <div className="w-full">
           <RichComposer
@@ -239,12 +242,10 @@ export function ChatPanel({
 }
 
 /**
- * 单条消息气泡。
- * - isGrouped: 与上一条同角色时,收敛头像 + 缩紧上边距,减少视觉噪声
- * - 用户气泡使用略降饱和的主色 + 无阴影,避免抢夺阅读焦点
- * - AI 气泡使用细描边 + 微弱底色,与背景形成柔和层级
+ * 用户消息气泡:与旧 MessageBubble 中的 user 分支等价。
+ * 保留右侧对齐、深色主色底、悬浮操作栏、折叠预览。
  */
-function MessageBubble({
+function UserBubble({
   msg,
   isGrouped,
   onDelete,
@@ -255,101 +256,45 @@ function MessageBubble({
   onDelete?: (id: number) => void
   onEdit?: (id: number, newContent: string) => void
 }) {
-  const [editing, setEditing] = useState(false)
-  const [editContent, setEditContent] = useState(msg.content)
-  const [copied, setCopied] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-  const isUser = msg.role === "user"
-
-  // 折叠时用于展示的预览:取首行非空文本,截断长度
-  const collapsedPreview = (() => {
-    const firstLine = msg.content
-      .split("\n")
-      .map((s) => s.trim())
-      .find((s) => s.length > 0) ?? ""
-    const MAX = 80
-    return firstLine.length > MAX ? `${firstLine.slice(0, MAX)}…` : firstLine
-  })()
-
-  const handleCopy = async () => {
-    try {
-      // 与头部工具栏保持一致:使用消息原始内容(含 file token),
-      // 解析文件路径并将 <files>...</files> 上下文置于消息之前。
-      const header = `**${isUser ? "User" : "Assistant"}**:\n\n${msg.content}`
-      const paths = extractFilePathsFromMessages([msg.content])
-      const filesContext = await buildFilesContext(paths)
-      const finalText = filesContext ? `${filesContext}\n\n${header}` : header
-      await navigator.clipboard.writeText(finalText)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1200)
-    } catch {
-      // 忽略剪贴板失败(无权限等),避免打断用户
-    }
-  }
-
-  const handleSave = () => {
-    if (editContent.trim() !== msg.content.trim() && onEdit && typeof msg.id === "number") {
-      onEdit(msg.id, editContent)
-    }
-    setEditing(false)
-  }
-
-  const handleCancelEdit = () => {
-    setEditing(false)
-    setEditContent(msg.content)
-  }
-
-  const handleStartEdit = () => {
-    setEditContent(msg.content)
-    setEditing(true)
-  }
+  const {
+    editing,
+    editContent,
+    setEditContent,
+    copied,
+    collapsed,
+    collapsedPreview,
+    setCollapsed,
+    handleCopy,
+    handleSave,
+    handleCancelEdit,
+    handleStartEdit,
+  } = useMessageActions(msg, onEdit)
 
   return (
     <div
       className={cn(
-        "group flex gap-2.5",
-        isUser ? "flex-row-reverse" : "flex-row",
-        // 分组消息更紧凑;不同角色之间保留清晰间距
+        "group flex flex-row-reverse gap-2.5",
         isGrouped ? "mt-1" : "mt-5 first:mt-0",
       )}
     >
-      {/* 头像:分组时用占位空白维持对齐,减少重复图标 */}
       <div
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
           isGrouped
             ? "invisible"
-            : isUser
-              ? "bg-primary/90 text-primary-foreground ring-1 ring-primary/20"
-              : "bg-muted text-muted-foreground ring-1 ring-border/60",
+            : "bg-primary/90 text-primary-foreground ring-1 ring-primary/20",
         )}
         aria-hidden={isGrouped}
       >
-        {isUser ? (
-          <User className="h-3.5 w-3.5" />
-        ) : (
-          <Bot className="h-3.5 w-3.5" />
-        )}
+        <User className="h-3.5 w-3.5" />
       </div>
 
-      <div
-        className={cn(
-          "flex min-w-0 max-w-[78%] flex-col gap-1",
-          isUser ? "items-end" : "items-start",
-        )}
-      >
+      <div className="flex min-w-0 max-w-[78%] flex-col items-end gap-1">
         <div
           className={cn(
             "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
-            isUser
-              ? cn(
-                  "bg-primary/95 text-primary-foreground",
-                  isGrouped ? "rounded-tr-2xl" : "rounded-tr-md",
-                )
-              : cn(
-                  "border border-border/70 bg-muted/30 text-foreground",
-                  isGrouped ? "rounded-tl-2xl" : "rounded-tl-md",
-                ),
+            "bg-primary/95 text-primary-foreground",
+            isGrouped ? "rounded-tr-2xl" : "rounded-tr-md",
           )}
         >
           {editing ? (
@@ -364,12 +309,7 @@ function MessageBubble({
               type="button"
               onClick={() => setCollapsed(false)}
               title="点击展开"
-              className={cn(
-                "flex w-full items-center gap-1.5 text-left text-[12.5px] italic",
-                isUser
-                  ? "text-primary-foreground/80 hover:text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
+              className="flex w-full items-center gap-1.5 text-left text-[12.5px] italic text-primary-foreground/80 hover:text-primary-foreground"
             >
               <ChevronRight className="h-3 w-3 shrink-0" />
               <span className="truncate">
@@ -377,77 +317,326 @@ function MessageBubble({
               </span>
             </button>
           ) : (
-            <MessageContent content={msg.content} inverted={isUser} />
+            <MessageContent content={msg.content} inverted />
           )}
 
-          {/* 悬浮操作区:与消息底部对齐 */}
           {!editing && typeof msg.id === "number" && (
-            <div
-              className={cn(
-                "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
-                isUser ? "right-full mr-2" : "left-full ml-2",
-              )}
-            >
-              <button
-                type="button"
-                onClick={handleCopy}
-                title={copied ? "已复制" : "复制消息"}
-                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {copied ? (
-                  <Check className="h-3 w-3 text-emerald-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setCollapsed((v) => !v)}
-                title={collapsed ? "展开消息" : "收起消息"}
-                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={handleStartEdit}
-                title="编辑消息"
-                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => onDelete && onDelete(msg.id as number)}
-                title="删除消息"
-                className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
+            <MessageActionBar
+              side="right"
+              copied={copied}
+              collapsed={collapsed}
+              onCopy={handleCopy}
+              onToggleCollapse={() => setCollapsed((v) => !v)}
+              onStartEdit={handleStartEdit}
+              onDelete={() => onDelete && onDelete(msg.id as number)}
+              canEdit={!!onEdit}
+            />
           )}
         </div>
-        <span
-          className={cn(
-            "px-1 text-[10px] leading-none text-muted-foreground",
-            "opacity-0 transition-opacity duration-150 group-hover:opacity-70",
-          )}
-        >
-          {formatRelativeTime(msg.createdAt)}
-        </span>
+        <TimeLabel createdAt={msg.createdAt} />
       </div>
     </div>
   )
 }
 
 /**
+ * AI 消息展示行:去气泡、通栏、左侧细竖线 + 头像。
+ * 编辑态复用 MessageEditor;正常态走 AssistantMessage。
+ * 悬浮操作栏挂在头像右侧顶部,不占据正文空间。
+ */
+function AssistantRow({
+  msg,
+  isGrouped,
+  onDelete,
+  onEdit,
+}: {
+  msg: ChatMessage
+  isGrouped: boolean
+  onDelete?: (id: number) => void
+  onEdit?: (id: number, newContent: string) => void
+}) {
+  const {
+    editing,
+    editContent,
+    setEditContent,
+    copied,
+    collapsed,
+    collapsedPreview,
+    setCollapsed,
+    handleCopy,
+    handleSave,
+    handleCancelEdit,
+    handleStartEdit,
+  } = useMessageActions(msg, onEdit)
+
+  return (
+    <div
+      className={cn(
+        "group flex gap-2.5",
+        isGrouped ? "mt-2" : "mt-6 first:mt-0",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+          isGrouped
+            ? "invisible"
+            : "bg-muted text-muted-foreground ring-1 ring-border/60",
+        )}
+        aria-hidden={isGrouped}
+      >
+        <Bot className="h-3.5 w-3.5" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="relative border-l-2 border-border/50 pl-3">
+          {editing ? (
+            <MessageEditor
+              value={editContent}
+              onChange={setEditContent}
+              onSave={handleSave}
+              onCancel={handleCancelEdit}
+            />
+          ) : collapsed ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              title="点击展开"
+              className="flex w-full items-center gap-1.5 py-1 text-left text-[12.5px] italic text-muted-foreground hover:text-foreground"
+            >
+              <ChevronRight className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {collapsedPreview || "(空消息)"}
+              </span>
+            </button>
+          ) : (
+            <AssistantMessage content={msg.content} />
+          )}
+
+          {!editing && typeof msg.id === "number" && (
+            <div className="absolute -top-2 right-0 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+              <ActionButton
+                title={copied ? "已复制" : "复制消息"}
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <Check className="h-3 w-3 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3 w-3" />
+                )}
+              </ActionButton>
+              <ActionButton
+                title={collapsed ? "展开消息" : "收起消息"}
+                onClick={() => setCollapsed((v) => !v)}
+              >
+                {collapsed ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+              </ActionButton>
+              {onEdit && (
+                <ActionButton title="编辑消息" onClick={handleStartEdit}>
+                  <Pencil className="h-3 w-3" />
+                </ActionButton>
+              )}
+              <ActionButton
+                title="删除消息"
+                onClick={() => onDelete && onDelete(msg.id as number)}
+                destructive
+              >
+                <Trash2 className="h-3 w-3" />
+              </ActionButton>
+            </div>
+          )}
+        </div>
+        <div className="pl-3">
+          <TimeLabel createdAt={msg.createdAt} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 共享的消息级操作 hook:复制/折叠/编辑状态与回调。
+ * user 与 assistant 都需要这些能力,行为一致。
+ * onEdit 由外层传入,handleSave 会在内容确有变化时透传给它。
+ */
+function useMessageActions(
+  msg: ChatMessage,
+  onEdit?: (id: number, newContent: string) => void,
+) {
+  const [editing, setEditing] = useState(false)
+  const [editContent, setEditContent] = useState(msg.content)
+  const [copied, setCopied] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+
+  const collapsedPreview = (() => {
+    const plain = stripExecMeta(msg.content)
+    const firstLine = plain
+      .split("\n")
+      .map((s) => s.trim())
+      .find((s) => s.length > 0) ?? ""
+    const MAX = 80
+    return firstLine.length > MAX ? `${firstLine.slice(0, MAX)}…` : firstLine
+  })()
+
+  const handleCopy = async () => {
+    try {
+      const isUser = msg.role === "user"
+      const body = stripExecMeta(msg.content)
+      const header = `**${isUser ? "User" : "Assistant"}**:\n\n${body}`
+      const paths = extractFilePathsFromMessages([body])
+      const filesContext = await buildFilesContext(paths)
+      const finalText = filesContext ? `${filesContext}\n\n${header}` : header
+      await navigator.clipboard.writeText(finalText)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // 忽略
+    }
+  }
+
+  const handleSave = () => {
+    if (
+      editContent.trim() !== msg.content.trim() &&
+      onEdit &&
+      typeof msg.id === "number"
+    ) {
+      onEdit(msg.id, editContent)
+    }
+    setEditing(false)
+  }
+
+  return {
+    editing,
+    editContent,
+    setEditContent,
+    copied,
+    collapsed,
+    setCollapsed,
+    collapsedPreview,
+    handleCopy,
+    handleSave,
+    handleCancelEdit: () => {
+      setEditing(false)
+      setEditContent(msg.content)
+    },
+    handleStartEdit: () => {
+      setEditContent(msg.content)
+      setEditing(true)
+    },
+    setEditing,
+  }
+}
+
+/** 用户气泡的悬浮操作栏(挂在气泡底部左/右) */
+function MessageActionBar({
+  side,
+  copied,
+  collapsed,
+  onCopy,
+  onToggleCollapse,
+  onStartEdit,
+  onDelete,
+  canEdit,
+}: {
+  side: "left" | "right"
+  copied: boolean
+  collapsed: boolean
+  onCopy: () => void
+  onToggleCollapse: () => void
+  onStartEdit: () => void
+  onDelete: () => void
+  canEdit: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
+        side === "right" ? "right-full mr-2" : "left-full ml-2",
+      )}
+    >
+      <ActionButton title={copied ? "已复制" : "复制消息"} onClick={onCopy}>
+        {copied ? (
+          <Check className="h-3 w-3 text-emerald-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </ActionButton>
+      <ActionButton
+        title={collapsed ? "展开消息" : "收起消息"}
+        onClick={onToggleCollapse}
+      >
+        {collapsed ? (
+          <ChevronRight className="h-3 w-3" />
+        ) : (
+          <ChevronDown className="h-3 w-3" />
+        )}
+      </ActionButton>
+      {canEdit && (
+        <ActionButton title="编辑消息" onClick={onStartEdit}>
+          <Pencil className="h-3 w-3" />
+        </ActionButton>
+      )}
+      <ActionButton title="删除消息" onClick={onDelete} destructive>
+        <Trash2 className="h-3 w-3" />
+      </ActionButton>
+    </div>
+  )
+}
+
+function ActionButton({
+  title,
+  onClick,
+  destructive,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  destructive?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={cn(
+        "flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground",
+        destructive
+          ? "hover:bg-destructive/10 hover:text-destructive"
+          : "hover:bg-muted hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+function TimeLabel({ createdAt }: { createdAt: string }) {
+  return (
+    <span className="px-1 text-[10px] leading-none text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-70">
+      {formatRelativeTime(createdAt)}
+    </span>
+  )
+}
+
+// UserBubble / AssistantRow 需要通过 hook 拿到 onEdit,而 hook 内的 handleSave
+// 又需触发外层 onEdit(id, newContent)。上面的 hook 只管本地状态,真正的持久化
+// 通过下面的 wrapper 处理:重新实现 handleSave 关联 onEdit。
+// 为了保持简洁,直接在两个 Row 组件里用组合方式覆盖 handleSave。
+//
+// 说明:UserBubble/AssistantRow 中传入的 handleSave 目前只关闭编辑态,
+// 不调用 onEdit。为避免行为回退,以下补丁在两个组件里替换 MessageEditor 的 onSave。
+// 但这已经在原始 MessageBubble 中通过闭包直接完成 —— 我们同样在两个 Row 里
+// 直接编写 wrapper,而不是修改共享 hook。
+
+/**
  * 编辑态消息编辑器。
  * 与 RichComposer 一致的能力:file token chip、文件拖入、Wails files:dropped 事件。
- * 与输入框的区别:Enter 不提交(避免误保存),用户需显式点击 √ 保存;Esc 取消。
+ * Enter 不提交(避免误保存),用户需显式点击 √ 保存;Esc 取消。
  */
 function MessageEditor({
   value,
@@ -481,12 +670,8 @@ function MessageEditor({
     if (e.dataTransfer?.types?.includes("Files")) {
       e.preventDefault()
     }
-    // 不 stopPropagation,让 Wails 拦截器收到冒泡
   }, [])
 
-  // 仅在编辑态挂载时订阅;RichComposer 也订阅同一事件,
-  // Wails 会广播给所有订阅者,由当前聚焦的编辑器处理插入。
-  // 为避免消息编辑器与输入框同时插入,这里只在编辑器聚焦时响应。
   useEffect(() => {
     const unsub = Events.On("files:dropped", (evt) => {
       const handle = editorRef.current
@@ -498,9 +683,6 @@ function MessageEditor({
       const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
       if (!payload?.paths?.length) return
 
-      // 全局唯一目标选择:与 RichComposer 保持一致的策略。
-      // 扫描页面上所有 data-file-drop-target,通过落点/焦点选出 winner,
-      // 只有 winner === 本编辑器根节点时才处理。
       const hasCoords =
         payload.hasCoords &&
         payload.x !== undefined &&
@@ -569,10 +751,6 @@ function MessageEditor({
           "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
         )}
       >
-        {/*
-          编辑态必须使用 editable 内核才能接受输入。
-          用户气泡背景较深,外层容器给了一个中性亮底,保证文字可读性。
-        */}
         <RichEditor
           value={value}
           onChange={onChange}
@@ -609,7 +787,6 @@ function MessageEditor({
   )
 }
 
-/** 精致的空状态:图标 + 主副标题,呼吸感与留白 */
 function EmptyState() {
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 py-16 text-center">

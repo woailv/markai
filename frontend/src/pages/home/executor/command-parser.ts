@@ -110,6 +110,14 @@ export interface ParseError {
 
 export type ParseItem = ParsedCommand | ParseError
 
+/** 带原文位置区间的解析结果,用于严格内联切片渲染 */
+export interface ParseItemWithRange {
+    item: ParseItem
+    /** 在原始文本中的字节区间 [start, end) */
+    start: number
+    end: number
+}
+
 /** 匹配一个完整的指令标签块(自闭合或成对) */
 const COMMAND_BLOCK_RE = new RegExp(
     `<(${COMMAND_TAG_ALTERNATION})\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/\\1\\s*>)`,
@@ -164,20 +172,31 @@ function parseSearchReplaceBlocks(body: string): SearchReplaceBlock[] {
 }
 
 export function parseCommands(text: string): ParseItem[] {
-    const items: ParseItem[] = []
+    return parseCommandsWithRanges(text).map((x) => x.item)
+}
+
+/**
+ * 与 parseCommands 语义一致,但额外返回每条指令在原文中的字节区间。
+ * 用于严格内联切片渲染:文本段 = 相邻区间之间的原文,指令段 = 命中区间。
+ */
+export function parseCommandsWithRanges(text: string): ParseItemWithRange[] {
+    const out: ParseItemWithRange[] = []
     COMMAND_BLOCK_RE.lastIndex = 0
     let m: RegExpExecArray | null
     while ((m = COMMAND_BLOCK_RE.exec(text))) {
         const [full, tag, attrRaw, inner] = m
         const attrs = parseAttrs(attrRaw || "")
         const kind = tag as CommandKind
+        const start = m.index
+        const end = m.index + full.length
 
         try {
+            let parsed: ParsedCommand
             switch (kind) {
                 case "WRITE_FILE": {
                     const path = requireAttr(attrs, "path", tag)
                     const content = extractCodeFence(inner ?? "")
-                    items.push({ kind, path, content })
+                    parsed = { kind, path, content }
                     break
                 }
                 case "EDIT_FILE": {
@@ -186,45 +205,54 @@ export function parseCommands(text: string): ParseItem[] {
                     if (edits.length === 0) {
                         throw new Error("EDIT_FILE 未包含任何 SEARCH/REPLACE 块")
                     }
-                    items.push({ kind, path, edits })
+                    parsed = { kind, path, edits }
                     break
                 }
                 case "DELETE_FILE": {
                     const path = requireAttr(attrs, "path", tag)
-                    items.push({ kind, path })
+                    parsed = { kind, path }
                     break
                 }
                 case "MOVE_PATH": {
                     const source = requireAttr(attrs, "source_path", tag)
                     const destination = requireAttr(attrs, "destination_path", tag)
-                    items.push({ kind, source, destination })
+                    parsed = { kind, source, destination }
                     break
                 }
                 case "CREATE_DIRECTORY": {
                     const path = requireAttr(attrs, "path", tag)
-                    items.push({ kind, path })
+                    parsed = { kind, path }
                     break
                 }
                 case "REQUEST_DIRECTORY_LIST": {
                     const path = requireAttr(attrs, "path", tag)
-                    items.push({ kind, path })
+                    parsed = { kind, path }
                     break
                 }
                 case "REQUEST_FILE": {
                     const path = requireAttr(attrs, "path", tag)
-                    items.push({ kind, path })
+                    parsed = { kind, path }
                     break
                 }
+                default: {
+                    // 类型系统上不可能到达,但兜底避免未初始化
+                    throw new Error(`未知指令: ${tag}`)
+                }
             }
+            out.push({ item: parsed, start, end })
         } catch (e) {
-            items.push({
-                kind: "PARSE_ERROR",
-                raw: full,
-                message: e instanceof Error ? e.message : String(e),
+            out.push({
+                item: {
+                    kind: "PARSE_ERROR",
+                    raw: full,
+                    message: e instanceof Error ? e.message : String(e),
+                },
+                start,
+                end,
             })
         }
     }
-    return items
+    return out
 }
 
 function requireAttr(
