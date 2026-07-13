@@ -1,7 +1,5 @@
-import { markdown } from "@codemirror/lang-markdown"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import CodeMirror from "@uiw/react-codemirror"
 import {
   ChevronDown,
   ChevronRight,
@@ -11,6 +9,7 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 
+import { RichEditor } from "@/components/rich-editor"
 import { Button } from "@/components/ui/button"
 
 import { promptExtensions } from "./cm-extensions"
@@ -150,18 +149,16 @@ function MarkdownBlock({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         >
-          <CodeMirror
+          <RichEditor
             value={block.content}
-            minHeight="60px"
-            extensions={[markdown(), ...promptExtensions]}
             onChange={(v) => onChange(block.id, v)}
-            basicSetup={{
-              lineNumbers: false,
-              foldGutter: false,
-              highlightActiveLine: false,
-              highlightActiveLineGutter: false,
-            }}
+            mode="editable"
+            markdown
             placeholder="请输入内容..."
+            // 模板块不识别 file token,也不吃 Enter 提交
+            fileTokens={{ enabled: false }}
+            extraExtensions={promptExtensions}
+            className="min-h-[60px]"
           />
         </div>
       )}
