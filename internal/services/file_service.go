@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -344,6 +346,34 @@ func (s *FileService) List(path string) ([]FileEntry, error) {
 		return strings.ToLower(result[i].Name) < strings.ToLower(result[j].Name)
 	})
 	return result, nil
+}
+
+// OpenInExplorer 在系统文件管理器中打开指定路径，并尽可能选中该文件/目录。
+func (s *FileService) OpenInExplorer(path string) error {
+	abs, err := requireAbs(path)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return fmt.Errorf("file: stat %q: %w", abs, err)
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", "/select,", abs)
+	case "darwin":
+		cmd = exec.Command("open", "-R", abs)
+	default:
+		// Linux 等系统通常使用 xdg-open。xdg-open 不支持选中文件，因此打开其所在目录
+		cmd = exec.Command("xdg-open", filepath.Dir(abs))
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("file: open in explorer %q: %w", abs, err)
+	}
+	// 不等待进程结束 (因为是唤起 GUI 窗口)
+	return nil
 }
 
 // requireAbs 校验路径非空且为绝对路径,并返回 Clean 后的形式。

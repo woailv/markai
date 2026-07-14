@@ -109,9 +109,15 @@ export function WorkspaceContextMenu({
     onClose()
   }
 
-  const handleOpenInExplorer = () => {
-    // 后端接口尚未落地时,先把路径写到剪贴板给用户使用。
-    void navigator.clipboard.writeText(targets.join("\n"))
+  const handleOpenInExplorer = async () => {
+    try {
+      // 避免一次性打开过多窗口，限制最多同时打开前 5 个选中项
+      await Promise.all(
+        targets.slice(0, 5).map((t) => FileService.OpenInExplorer(t)),
+      )
+    } catch (err) {
+      console.error("[workspace] OpenInExplorer failed:", err)
+    }
     onClose()
   }
 

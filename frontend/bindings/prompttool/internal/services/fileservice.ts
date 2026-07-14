@@ -70,6 +70,13 @@ export function Move($in: $models.MovePathInput): $CancellablePromise<void> {
 }
 
 /**
+ * OpenInExplorer 在系统文件管理器中打开指定路径，并尽可能选中该文件/目录。
+ */
+export function OpenInExplorer(path: string): $CancellablePromise<void> {
+    return $Call.ByID(3078032335, path);
+}
+
+/**
  * Read 读取文件内容。
  */
 export function Read(path: string): $CancellablePromise<$models.ReadFileResult | null> {
