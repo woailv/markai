@@ -133,6 +133,7 @@ func (s *FileService) Read(path string) (*ReadFileResult, error) {
 		Path:    abs,
 		Content: string(data),
 		Size:    info.Size(),
+		ModTime: info.ModTime().Unix(),
 	}, nil
 }
 
@@ -158,6 +159,9 @@ func (s *FileService) Write(in WriteFileInput) (*WriteFileResult, error) {
 	case statErr == nil:
 		if existing.IsDir() {
 			return nil, fmt.Errorf("file: write %q: is a directory", abs)
+		}
+		if in.ExpectedModTime != 0 && existing.ModTime().Unix() != in.ExpectedModTime {
+			return nil, fmt.Errorf("file: write %q: modified since last read (expected mtime %d, got %d)", abs, in.ExpectedModTime, existing.ModTime().Unix())
 		}
 		data, readErr := os.ReadFile(abs)
 		if readErr != nil {

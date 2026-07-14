@@ -9,20 +9,24 @@ type FileEntry struct {
 	ModTime int64  `json:"modTime"` // Unix 秒
 }
 
-// ReadFileResult 读取文件结果。
+// ReadFileResult 读取文件结果。ModTime 为 Unix 秒,用于后续写入时的 data race 检测。
 type ReadFileResult struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
 	Size    int64  `json:"size"`
+	ModTime int64  `json:"modTime"`
 }
 
 // WriteFileInput 写文件入参。
 // 若目标目录不存在,自动创建父目录。
 // BatchID 可选:若非零,写盘前登记原始状态以支持后续撤销。
+// ExpectedModTime 可选(Unix 秒):若非零且目标文件已存在,写入前会比对磁盘上的 mtime,
+// 不一致则拒绝写入(data race 保护)。新建文件场景该字段被忽略。
 type WriteFileInput struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-	BatchID uint64 `json:"batchId,omitempty"`
+	Path            string `json:"path"`
+	Content         string `json:"content"`
+	BatchID         uint64 `json:"batchId,omitempty"`
+	ExpectedModTime int64  `json:"expectedModTime,omitempty"`
 }
 
 // DeleteInput 删除入参。BatchID 语义同 WriteFileInput。
