@@ -492,31 +492,28 @@ function useMessageActions(
     try {
       const isUser = msg.role === "user"
       const body = stripExecMeta(msg.content)
-      const header = `**${isUser ? "User" : "Assistant"}**:\n\n${body}`
-      // 文件 token 路径 + AI 消息中 REQUEST_FILE / REQUEST_DIRECTORY_LIST 的路径
-      // 都作为 <files> 上下文的来源
-      const tokenPaths = extractFilePathsFromMessages([body])
-      const requestPaths = !isUser
-        ? extractRequestPathsFromMessages([body])
-        : []
-      const seen = new Set<string>()
-      const paths: string[] = []
-      for (const p of [...tokenPaths, ...requestPaths]) {
-        if (!seen.has(p)) {
-          seen.add(p)
-          paths.push(p)
-        }
+
+      let finalText: string
+      if (isUser) {
+        // 用户消息:保留 header + 正文 + templates/files 上下文
+        const header = `**User**:\n\n${body}`
+        const tokenPaths = extractFilePathsFromMessages([body])
+        const filesContext = await buildFilesContext(tokenPaths)
+        const templatesContext = buildTemplatesContext([body], templates)
+        const prefixes = [templatesContext, filesContext].filter(
+          (s) => s.length > 0,
+        )
+        finalText =
+          prefixes.length > 0
+            ? `${prefixes.join("\n\n")}\n\n${header}`
+            : header
+      } else {
+        // AI 消息:只复制 REQUEST_FILE / REQUEST_DIRECTORY_LIST 对应的文件上下文,
+        // 不包含 **Assistant**: header 与消息正文
+        const requestPaths = extractRequestPathsFromMessages([body])
+        finalText = await buildFilesContext(requestPaths)
       }
-      const filesContext = await buildFilesContext(paths)
-      const templatesContext = buildTemplatesContext([body], templates)
-      // 顺序: templates → files → 消息正文 —— 与"复制全部"保持一致
-      const prefixes = [templatesContext, filesContext].filter(
-        (s) => s.length > 0,
-      )
-      const finalText =
-        prefixes.length > 0
-          ? `${prefixes.join("\n\n")}\n\n${header}`
-          : header
+
       await navigator.clipboard.writeText(finalText)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
