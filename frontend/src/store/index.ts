@@ -12,3 +12,6 @@ export type { DraftStore } from "./draft.store"
 
 export { useWorkspaceStore, WORKSPACE_LAYOUT, sortEntries } from "./workspace.store"
 export type { TreeNode } from "./workspace.store"
+
+export { useTabStore } from "./tab.store"
+export type { Tab, TabKind, TabStore } from "./tab.store"
