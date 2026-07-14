@@ -6,12 +6,14 @@ import * as FileService from "./fileservice.js";
 import * as GreetService from "./greetservice.js";
 import * as PromptTemplateService from "./prompttemplateservice.js";
 import * as SnapshotService from "./snapshotservice.js";
+import * as WorkspaceService from "./workspaceservice.js";
 export {
     ConversationService,
     FileService,
     GreetService,
     PromptTemplateService,
-    SnapshotService
+    SnapshotService,
+    WorkspaceService
 };
 
 export type {
@@ -26,16 +28,21 @@ export type {
     CreateDirectoryInput,
     CreateInput,
     DeleteInput,
+    Emitter,
     FileEntry,
+    ListWorkspaceInput,
     MessageDTO,
     MovePathInput,
     PromptTemplate,
     ReadFileResult,
     RenameConversationInput,
     SetTemplatesInput,
+    SetWorkspaceRootInput,
     UndoBatchResult,
     UpdateInput,
     UpdateMessageInput,
+    WorkspaceEntry,
+    WorkspaceRootInfo,
     WriteFileInput,
     WriteFileResult
 } from "./models.js";

@@ -132,6 +132,11 @@ export interface DeleteInput {
 }
 
 /**
+ * Emitter 抽象事件推送能力,便于解耦 Wails application 依赖与测试。
+ */
+export type Emitter = any;
+
+/**
  * FileEntry 目录列表中的单项元数据。
  */
 export interface FileEntry {
@@ -144,6 +149,15 @@ export interface FileEntry {
      * Unix 秒
      */
     "modTime": number;
+}
+
+/**
+ * ListWorkspaceInput 列出目录一层内容的入参。
+ * Path 为空时使用当前根目录;非空时必须位于根目录之内。
+ */
+export interface ListWorkspaceInput {
+    "path"?: string;
+    "includeHidden"?: boolean;
 }
 
 /**
@@ -206,6 +220,13 @@ export interface SetTemplatesInput {
 }
 
 /**
+ * SetWorkspaceRootInput 设置根目录入参。
+ */
+export interface SetWorkspaceRootInput {
+    "root": string;
+}
+
+/**
  * UndoBatchResult 撤销结果概览。
  */
 export interface UndoBatchResult {
@@ -229,6 +250,41 @@ export interface UpdateInput {
 export interface UpdateMessageInput {
     "messageId": number;
     "content": string;
+}
+
+/**
+ * WorkspaceEntry 目录树中的单项元数据。
+ * 字段设计与 FileEntry 保持一致的命名风格,并增加 IsHidden / IsSymlink
+ * 供前端做视觉区分。
+ */
+export interface WorkspaceEntry {
+    "name": string;
+    "path": string;
+    "parent": string;
+    "isDir": boolean;
+    "isHidden": boolean;
+    "isSymlink": boolean;
+    "size": number;
+
+    /**
+     * Unix 秒
+     */
+    "modTime": number;
+}
+
+/**
+ * WorkspaceRootInfo 工作区根目录状态。
+ */
+export interface WorkspaceRootInfo {
+    "root": string;
+    "exists": boolean;
+    "watching": boolean;
+
+    /**
+     * fsnotify 不可用,已降级为轮询
+     */
+    "degraded": boolean;
+    "reason"?: string;
 }
 
 /**

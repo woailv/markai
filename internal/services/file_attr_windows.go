@@ -33,3 +33,22 @@ func clearReadOnly(path string) error {
 	}
 	return windows.SetFileAttributes(p, attrs&^windows.FILE_ATTRIBUTE_READONLY)
 }
+
+// isHiddenPath 判断路径是否为隐藏项(Windows)。
+// 兼顾两种情形:
+//  1. 具备 FILE_ATTRIBUTE_HIDDEN 属性;
+//  2. 名称以 '.' 开头(便于跨平台项目共享判定)。
+func isHiddenPath(path, name string) bool {
+	if len(name) > 0 && name[0] == '.' {
+		return true
+	}
+	p, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return false
+	}
+	attrs, err := windows.GetFileAttributes(p)
+	if err != nil {
+		return false
+	}
+	return attrs&windows.FILE_ATTRIBUTE_HIDDEN != 0
+}

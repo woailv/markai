@@ -19,6 +19,16 @@ type DBConfig struct {
 	Path string
 }
 
+// WorkspaceConfig 工作区目录相关配置。
+type WorkspaceConfig struct {
+	// Root 工作区根目录绝对路径,若为空表示未设置。
+	Root string
+	// IgnoreDirs 递归监听时忽略的目录名(仅按 basename 匹配)。
+	IgnoreDirs []string
+	// DebounceMillis 变更事件合并去抖窗口(毫秒)。
+	DebounceMillis int
+}
+
 // WindowConfig 主窗口默认参数。
 type WindowConfig struct {
 	Title      string
@@ -42,6 +52,25 @@ func DefaultWindow() WindowConfig {
 		Width:      1000,
 		Height:     618,
 		Background: application.NewRGB(200, 200, 200),
+	}
+}
+
+// DefaultWorkspace 返回默认工作区配置。
+// 默认根目录使用用户主目录;拿不到则回退到当前工作目录。
+func DefaultWorkspace() WorkspaceConfig {
+	root, err := os.UserHomeDir()
+	if err != nil || root == "" {
+		if wd, wdErr := os.Getwd(); wdErr == nil {
+			root = wd
+		}
+	}
+	return WorkspaceConfig{
+		Root: root,
+		IgnoreDirs: []string{
+			"node_modules", ".git", "dist", "build",
+			".idea", ".vscode", ".next", ".cache", "target",
+		},
+		DebounceMillis: 150,
 	}
 }
 

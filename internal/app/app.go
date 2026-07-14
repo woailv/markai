@@ -16,10 +16,24 @@ import (
 
 // App 封装 Wails application 及其依赖,便于集中管理生命周期。
 type App struct {
-	wails  *application.App
-	logger *slog.Logger
-	db     *db.DB
-	cancel context.CancelFunc
+	wails     *application.App
+	logger    *slog.Logger
+	db        *db.DB
+	workspace *services.WorkspaceService
+	cancel    context.CancelFunc
+}
+
+// wailsEmitter 将 Wails application 适配为 services.Emitter,
+// 供 WorkspaceService 向前端推送文件变更事件。
+type wailsEmitter struct {
+	app *application.App
+}
+
+func (e *wailsEmitter) EmitEvent(name string, data any) {
+	if e == nil || e.app == nil {
+		return
+	}
+	e.app.Event.Emit(name, data)
 }
 
 // New 装配 Wails 应用:配置、数据库、Service、窗口、事件、后台任务。
@@ -43,7 +57,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: migrate schema: %w", err)
 	}
 
-	svcList, err := services.Registry(database)
+	registry, err := services.Registry(database)
 	if err != nil {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close db after service init failure", "err", closeErr)
@@ -54,7 +68,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 	wailsApp := application.New(application.Options{
 		Name:        cfg.Name,
 		Description: cfg.Description,
-		Services:    svcList,
+		Services:    registry.Services,
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -63,6 +77,17 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		},
 	})
 
+	// 注入事件推送能力并启动工作区监听。启动失败已在 Service 内部降级,
+	// 这里只记录日志,不阻塞应用启动。
+	if registry.Workspace != nil {
+		registry.Workspace.SetEmitter(&wailsEmitter{app: wailsApp})
+		if info, err := registry.Workspace.Start(); err != nil {
+			logger.Error("workspace watcher start", "err", err)
+		} else if info != nil && !info.Watching {
+			logger.Warn("workspace watcher not active", "reason", info.Reason, "degraded", info.Degraded)
+		}
+	}
+
 	mainWin := window.NewMain(wailsApp, config.DefaultWindow())
 	registerFilesDropForward(wailsApp, mainWin, logger)
 
@@ -70,16 +95,22 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 	StartTimeTicker(ctx, wailsApp)
 
 	return &App{
-		wails:  wailsApp,
-		logger: logger,
-		db:     database,
-		cancel: cancel,
+		wails:     wailsApp,
+		logger:    logger,
+		db:        database,
+		workspace: registry.Workspace,
+		cancel:    cancel,
 	}, nil
 }
 
 // Run 启动事件循环,阻塞直到应用退出。
 func (a *App) Run() error {
 	defer a.cancel()
+	defer func() {
+		if a.workspace != nil {
+			a.workspace.Stop()
+		}
+	}()
 	defer func() {
 		if err := a.db.Close(); err != nil {
 			a.logger.Error("close db", "err", err)

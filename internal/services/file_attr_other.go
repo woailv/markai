@@ -7,3 +7,8 @@ package services
 func clearReadOnly(path string) error {
 	return nil
 }
+
+// isHiddenPath 判断路径是否为隐藏项(POSIX)。以 '.' 开头即视为隐藏。
+func isHiddenPath(_ string, name string) bool {
+	return len(name) > 0 && name[0] == '.'
+}

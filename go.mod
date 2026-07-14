@@ -3,6 +3,7 @@ module prompttool
 go 1.25.0
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/wailsapp/wails/v3 v3.0.0-alpha2.117
 	golang.org/x/sys v0.43.0
