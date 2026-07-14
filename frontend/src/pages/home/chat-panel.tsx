@@ -33,6 +33,7 @@ import { stripExecMeta } from "./executor/exec-meta"
 import {
   buildFilesContext,
   extractFilePathsFromMessages,
+  extractRequestPathsFromMessages,
 } from "./file-context"
 import { MessageContent } from "./message-content"
 import { buildTemplatesContext } from "./template-context"
@@ -492,7 +493,20 @@ function useMessageActions(
       const isUser = msg.role === "user"
       const body = stripExecMeta(msg.content)
       const header = `**${isUser ? "User" : "Assistant"}**:\n\n${body}`
-      const paths = extractFilePathsFromMessages([body])
+      // 文件 token 路径 + AI 消息中 REQUEST_FILE / REQUEST_DIRECTORY_LIST 的路径
+      // 都作为 <files> 上下文的来源
+      const tokenPaths = extractFilePathsFromMessages([body])
+      const requestPaths = !isUser
+        ? extractRequestPathsFromMessages([body])
+        : []
+      const seen = new Set<string>()
+      const paths: string[] = []
+      for (const p of [...tokenPaths, ...requestPaths]) {
+        if (!seen.has(p)) {
+          seen.add(p)
+          paths.push(p)
+        }
+      }
       const filesContext = await buildFilesContext(paths)
       const templatesContext = buildTemplatesContext([body], templates)
       // 顺序: templates → files → 消息正文 —— 与"复制全部"保持一致

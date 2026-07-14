@@ -15,6 +15,7 @@ import {
   Loader2,
   MinusCircle,
   MoveRight,
+  Package,
   SlashSquare,
 } from "lucide-react"
 import { useState, type ReactNode } from "react"
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils"
 
 import type { ExecResultBase, ExecStatus } from "../executor/command-executor"
 import type { ParsedCommand } from "../executor/command-parser"
+import { buildFilesContext } from "../file-context"
 
 /**
  * 单条指令的展示卡片。
@@ -64,11 +66,35 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
   const Icon = meta.icon
   const primaryPath = getPrimaryPath(command)
 
+  const [copiedFiles, setCopiedFiles] = useState(false)
+  // 仅对 REQUEST_FILE / REQUEST_DIRECTORY_LIST 展示"复制为 files 上下文"
+  const canCopyAsFiles =
+    command.kind === "REQUEST_FILE" ||
+    command.kind === "REQUEST_DIRECTORY_LIST"
+
   const handleCopyPath = async () => {
     try {
       await navigator.clipboard.writeText(primaryPath)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
+    } catch {
+      // 忽略
+    }
+  }
+
+  const handleCopyAsFiles = async () => {
+    if (!canCopyAsFiles) return
+    try {
+      // REQUEST_FILE:直接读取该文件
+      // REQUEST_DIRECTORY_LIST:递归展开目录下所有文件
+      // 两者均通过 buildFilesContext 复用与用户消息一致的 <files> 格式
+      const path = "path" in command ? command.path : ""
+      if (!path) return
+      const ctx = await buildFilesContext([path])
+      if (!ctx) return
+      await navigator.clipboard.writeText(ctx)
+      setCopiedFiles(true)
+      window.setTimeout(() => setCopiedFiles(false), 1200)
     } catch {
       // 忽略
     }
@@ -126,6 +152,21 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
             <Copy className="h-3 w-3" />
           )}
         </button>
+
+        {canCopyAsFiles && (
+          <button
+            type="button"
+            onClick={handleCopyAsFiles}
+            title="复制为 <files> 上下文"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            {copiedFiles ? (
+              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+            ) : (
+              <Package className="h-3 w-3" />
+            )}
+          </button>
+        )}
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <StatusPill status={status} summary={result?.summary} />
