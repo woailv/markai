@@ -54,7 +54,8 @@ export function emitFilesDropped(
   const payload = coords
     ? { paths, hasCoords: true, x: coords.x, y: coords.y }
     : { paths, hasCoords: false }
-  // Wails Events.Emit 在前端触发,同一 Runtime 内的 Events.On 会收到。
-  // 由于这是纯前端事件,未在 Go 后端定义,所以跳过 CustomEvents 的强类型检查。
-  void Events.Emit({ name: "files:dropped", data: payload } as any)
+  // Wails v3 Events.Emit 签名为 (name, ...data)。此前误传对象字面量
+  // 导致后端 JSON 解析失败(name 字段应为 string)。
+  // 这是纯前端事件,未在 Go 后端定义,所以跳过 CustomEvents 的强类型检查。
+  void (Events.Emit as any)("files:dropped", payload)
 }
