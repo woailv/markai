@@ -26,13 +26,17 @@ interface TreeNodeProps {
   matcher: (name: string) => boolean
   /** 搜索非空时,若该子树无命中则隐藏该分支 */
   branchHasMatch: (path: string) => boolean
+  /** 计算当前可见的先序路径列表(用于 Shift 范围选择) */
+  getVisibleOrder: () => string[]
+  /** 处理原生拖拽开始事件(把选中项打包给外部) */
+  onDragStart: (e: React.DragEvent, path: string) => void
 }
 
 /**
  * 单个目录/文件节点。
- * - 目录:点击展开/收起;首次展开时惰性加载。
- * - 文件:点击选中(触发 store.selectedPath 更新)。
- * - 隐藏文件视具体开关决定是否渲染。
+ * - 目录:双击/点击 chevron 展开;单击行仅做选择。
+ * - 文件:点击选择(单选 / Ctrl 切换 / Shift 区间)。
+ * - Ctrl/Shift 键不会触发展开,避免与多选冲突。
  */
 export const TreeNode = memo(function TreeNode({
   path,
@@ -40,29 +44,64 @@ export const TreeNode = memo(function TreeNode({
   onContextMenu,
   matcher,
   branchHasMatch,
+  getVisibleOrder,
+  onDragStart,
 }: TreeNodeProps) {
   const node = useWorkspaceStore((s) => s.nodes[path]) as
     | TreeNodeData
     | undefined
   const expanded = useWorkspaceStore((s) => s.expanded.has(path))
-  const selected = useWorkspaceStore((s) => s.selectedPath === path)
+  const isMultiSelected = useWorkspaceStore((s) => s.selectedPaths.has(path))
+  const isPrimary = useWorkspaceStore((s) => s.selectedPath === path)
   const showHidden = useWorkspaceStore((s) => s.showHidden)
   const searchQuery = useWorkspaceStore((s) => s.searchQuery)
   const toggleExpanded = useWorkspaceStore((s) => s.toggleExpanded)
-  const setSelected = useWorkspaceStore((s) => s.setSelected)
+  const selectOnly = useWorkspaceStore((s) => s.selectOnly)
+  const toggleSelect = useWorkspaceStore((s) => s.toggleSelect)
+  const rangeSelect = useWorkspaceStore((s) => s.rangeSelect)
 
-  const handleClick = useCallback(async () => {
-    if (!node) return
-    if (node.entry.isDir) {
+  const handleClick = useCallback(
+    async (e: React.MouseEvent) => {
+      if (!node) return
+      const modifier = e.ctrlKey || e.metaKey
+      const shift = e.shiftKey
+
+      if (shift) {
+        rangeSelect(path, getVisibleOrder())
+        return
+      }
+      if (modifier) {
+        toggleSelect(path)
+        return
+      }
+
+      // 单击:仅选中(不展开目录)。目录展开走 chevron / 双击。
+      selectOnly(path)
+    },
+    [node, path, rangeSelect, toggleSelect, selectOnly, getVisibleOrder],
+  )
+
+  const handleDoubleClick = useCallback(async () => {
+    if (!node || !node.entry.isDir) return
+    const willExpand = !expanded
+    toggleExpanded(path)
+    if (willExpand && !node.loaded && !node.loading) {
+      await loadDirectoryChildren(path)
+    }
+  }, [expanded, node, path, toggleExpanded])
+
+  const handleChevronClick = useCallback(
+    async (e: React.MouseEvent) => {
+      e.stopPropagation()
+      if (!node || !node.entry.isDir) return
       const willExpand = !expanded
       toggleExpanded(path)
       if (willExpand && !node.loaded && !node.loading) {
         await loadDirectoryChildren(path)
       }
-    } else {
-      setSelected(path)
-    }
-  }, [expanded, node, path, setSelected, toggleExpanded])
+    },
+    [expanded, node, path, toggleExpanded],
+  )
 
   if (!node) return null
   const { entry } = node
@@ -78,18 +117,27 @@ export const TreeNode = memo(function TreeNode({
   const handleContext = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    // 右键节点未在多选内 → 视为单选;已在多选内 → 保持多选,菜单作用于整个多选
+    if (!isMultiSelected) {
+      selectOnly(path)
+    }
     onContextMenu(e, path, entry.isDir)
   }
 
   const iconClass = "h-3.5 w-3.5 shrink-0"
   const chevronClass = "h-3 w-3 shrink-0"
 
+  const selected = isMultiSelected || isPrimary
+
   return (
     <div>
       <button
         type="button"
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={handleContext}
+        draggable
+        onDragStart={(e) => onDragStart(e, path)}
         title={entry.path}
         className={cn(
           "group flex w-full items-center gap-1 rounded px-1.5 py-1 text-left text-[12.5px] leading-tight",
@@ -100,7 +148,12 @@ export const TreeNode = memo(function TreeNode({
         style={{ paddingLeft: 6 + depth * 12 }}
       >
         {entry.isDir ? (
-          <span className="flex h-4 w-4 items-center justify-center text-muted-foreground">
+          <span
+            onClick={handleChevronClick}
+            className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+            role="button"
+            aria-label={expanded ? "收起" : "展开"}
+          >
             {node.loading ? (
               <Loader2 className={cn(chevronClass, "animate-spin")} />
             ) : expanded ? (
@@ -170,6 +223,8 @@ export const TreeNode = memo(function TreeNode({
                 onContextMenu={onContextMenu}
                 matcher={matcher}
                 branchHasMatch={branchHasMatch}
+                getVisibleOrder={getVisibleOrder}
+                onDragStart={onDragStart}
               />
             ))
           )}

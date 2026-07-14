@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { useWorkspaceStore, WORKSPACE_LAYOUT } from "@/store"
 
 import { WorkspaceContextMenu } from "./context-menu"
+import { computeVisibleOrder, emitFilesDropped } from "./selection-utils"
 import { WorkspaceToolbar } from "./toolbar"
 import { TreeNode } from "./tree-node"
 import type { ContextMenuState } from "./types"
@@ -62,6 +63,7 @@ function TreeArea() {
   const root = useWorkspaceStore((s) => s.root)
   const rootChildren = useWorkspaceStore((s) => s.rootChildren)
   const nodes = useWorkspaceStore((s) => s.nodes)
+  const expanded = useWorkspaceStore((s) => s.expanded)
   const watchStatus = useWorkspaceStore((s) => s.watchStatus)
   const watchReason = useWorkspaceStore((s) => s.watchReason)
   const searchQuery = useWorkspaceStore((s) => s.searchQuery)
@@ -69,6 +71,7 @@ function TreeArea() {
   const expandAncestors = useWorkspaceStore((s) => s.expandAncestors)
   const setRoot = useWorkspaceStore((s) => s.setRoot)
   const setWatchStatus = useWorkspaceStore((s) => s.setWatchStatus)
+  const clearSelection = useWorkspaceStore((s) => s.clearSelection)
 
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
 
@@ -118,6 +121,57 @@ function TreeArea() {
       setMenu({ x: e.clientX, y: e.clientY, targetPath: path, isDir })
     },
     [],
+  )
+
+  /** 组件持有的可见顺序计算器,交给 TreeNode 做 Shift 区间选择用。 */
+  const getVisibleOrder = useCallback(
+    () =>
+      computeVisibleOrder(
+        rootChildren,
+        nodes,
+        expanded,
+        showHidden,
+        query,
+        matcher,
+        branchHasMatch,
+      ),
+    [rootChildren, nodes, expanded, showHidden, query, matcher, branchHasMatch],
+  )
+
+  /**
+   * 从树里拖出条目:若当前节点已在多选内,则整个多选被拖走;
+   * 否则仅拖走该节点。落点由 dragend + elementsFromPoint 决定,
+   * 通过 files:dropped 事件复用输入框/编辑器现成的插入逻辑。
+   */
+  const handleDragStart = useCallback((e: React.DragEvent, path: string) => {
+    const state = useWorkspaceStore.getState()
+    const selected = state.selectedPaths.has(path)
+      ? Array.from(state.selectedPaths)
+      : [path]
+    e.dataTransfer.effectAllowed = "copy"
+    // 写点内容以让浏览器认为这是有效拖拽(实际不消费)
+    try {
+      e.dataTransfer.setData("application/x-workspace-paths", JSON.stringify(selected))
+    } catch {
+      /* ignore */
+    }
+
+    const target = e.currentTarget as HTMLElement
+    const handleEnd = (ev: DragEvent) => {
+      target.removeEventListener("dragend", handleEnd)
+      emitFilesDropped(selected, { x: ev.clientX, y: ev.clientY })
+    }
+    target.addEventListener("dragend", handleEnd)
+  }, [])
+
+  const handleBlankMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // 点击空白区域(不是节点)时清空多选
+      if (e.target === e.currentTarget) {
+        clearSelection()
+      }
+    },
+    [clearSelection],
   )
 
   const handleSelectRoot = useCallback(async () => {
@@ -171,7 +225,10 @@ function TreeArea() {
         <StatusBar tone="error" message="监听失败" detail={watchReason} />
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1"
+        onMouseDown={handleBlankMouseDown}
+      >
         {!hasRoot ? (
           <EmptyRoot onChoose={handleSelectRoot} />
         ) : !rootAccessible ? (
@@ -187,6 +244,8 @@ function TreeArea() {
               onContextMenu={handleContextMenu}
               matcher={matcher}
               branchHasMatch={branchHasMatch}
+              getVisibleOrder={getVisibleOrder}
+              onDragStart={handleDragStart}
             />
           ))
         )}

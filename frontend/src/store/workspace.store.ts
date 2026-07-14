@@ -29,8 +29,12 @@ interface WorkspaceState {
   nodes: Record<string, TreeNode>
   /** 展开的目录路径集合 */
   expanded: Set<string>
-  /** 当前选中的路径 */
+  /** 当前选中的路径(单选,主要用于键盘/单击场景) */
   selectedPath: string | null
+  /** 多选路径集合(Ctrl/Shift 点击) */
+  selectedPaths: Set<string>
+  /** 多选锚点,用于 Shift 范围选择 */
+  anchorPath: string | null
   /** 是否显示隐藏文件(点开头/系统隐藏属性) */
   showHidden: boolean
   /** 搜索关键字(小写) */
@@ -55,6 +59,14 @@ interface WorkspaceState {
   setExpanded: (path: string, expanded: boolean) => void
   expandAncestors: (path: string) => void
   setSelected: (path: string | null) => void
+  /** 单选:清空多选并将 path 作为唯一选中项(anchor) */
+  selectOnly: (path: string | null) => void
+  /** Ctrl/Cmd 点击:切换 path 的选中态,更新 anchor */
+  toggleSelect: (path: string) => void
+  /** Shift 点击:从 anchor 到 path 的可见范围内追加选中 */
+  rangeSelect: (path: string, visibleOrder: string[]) => void
+  /** 清空多选 */
+  clearSelection: () => void
   setShowHidden: (v: boolean) => void
   setSearchQuery: (q: string) => void
   setCollapsed: (v: boolean) => void
@@ -94,6 +106,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       nodes: {},
       expanded: new Set<string>(),
       selectedPath: null,
+      selectedPaths: new Set<string>(),
+      anchorPath: null,
       showHidden: false,
       searchQuery: "",
       collapsed: false,
@@ -108,6 +122,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           nodes: {},
           expanded: new Set(),
           selectedPath: null,
+          selectedPaths: new Set(),
+          anchorPath: null,
         }),
 
       setRootChildren: (paths) => set({ rootChildren: paths }),
@@ -157,9 +173,12 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       removeSubtree: (path) => {
-        const { nodes, expanded, rootChildren, root, selectedPath } = get()
+        const { nodes, expanded, rootChildren, root, selectedPath, selectedPaths, anchorPath } =
+          get()
         const nextNodes = { ...nodes }
         const nextExpanded = new Set(expanded)
+        const nextSelectedPaths = new Set(selectedPaths)
+        let nextAnchor = anchorPath
 
         // 递归收集 path 及其后代
         const stack = [path]
@@ -170,6 +189,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           for (const child of node.childrenPaths) stack.push(child)
           delete nextNodes[cur]
           nextExpanded.delete(cur)
+          nextSelectedPaths.delete(cur)
+          if (nextAnchor === cur) nextAnchor = null
         }
 
         // 从父节点或根子表中摘掉
@@ -196,6 +217,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             selectedPath && (selectedPath === path || selectedPath.startsWith(path + "/") || selectedPath.startsWith(path + "\\"))
               ? null
               : selectedPath,
+          selectedPaths: nextSelectedPaths,
+          anchorPath: nextAnchor,
           // root 保持不变
           root,
         })
@@ -229,6 +252,48 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       },
 
       setSelected: (path) => set({ selectedPath: path }),
+
+      selectOnly: (path) => {
+        const next = new Set<string>()
+        if (path) next.add(path)
+        set({
+          selectedPath: path,
+          selectedPaths: next,
+          anchorPath: path,
+        })
+      },
+
+      toggleSelect: (path) => {
+        const next = new Set(get().selectedPaths)
+        if (next.has(path)) next.delete(path)
+        else next.add(path)
+        // selectedPath 跟随最后一次操作的路径,便于键盘视觉聚焦
+        set({
+          selectedPaths: next,
+          anchorPath: path,
+          selectedPath: next.has(path) ? path : get().selectedPath,
+        })
+      },
+
+      rangeSelect: (path, visibleOrder) => {
+        const anchor = get().anchorPath ?? path
+        const ai = visibleOrder.indexOf(anchor)
+        const bi = visibleOrder.indexOf(path)
+        if (ai < 0 || bi < 0) {
+          const next = new Set(get().selectedPaths)
+          next.add(path)
+          set({ selectedPaths: next, selectedPath: path })
+          return
+        }
+        const [lo, hi] = ai <= bi ? [ai, bi] : [bi, ai]
+        const next = new Set(get().selectedPaths)
+        for (let i = lo; i <= hi; i++) next.add(visibleOrder[i])
+        set({ selectedPaths: next, selectedPath: path })
+      },
+
+      clearSelection: () =>
+        set({ selectedPaths: new Set(), anchorPath: null }),
+
       setShowHidden: (v) => set({ showHidden: v }),
       setSearchQuery: (q) => set({ searchQuery: q }),
       setCollapsed: (v) => set({ collapsed: v }),
@@ -242,6 +307,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           nodes: {},
           expanded: new Set(),
           selectedPath: null,
+          selectedPaths: new Set(),
+          anchorPath: null,
           searchQuery: "",
         }),
     }),

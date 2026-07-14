@@ -1,13 +1,15 @@
 import {
   ClipboardCopy,
   ExternalLink,
+  FilePlus2,
   RefreshCw,
 } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
+import { emitFilesDropped } from "./selection-utils"
 import type { ContextMenuState } from "./types"
 import { refreshDirectoryChildren, refreshRoot } from "./use-workspace-events"
 
@@ -17,8 +19,15 @@ interface WorkspaceContextMenuProps {
 }
 
 /**
- * 右键菜单:刷新、在资源管理器中打开(占位,需要后端 shell.open 支持)、
- * 复制绝对路径、复制相对路径。
+ * 右键菜单。目标集合规则:
+ * - 若右键节点在多选内,则本次操作作用于整个多选(≥ 1 项);
+ * - 否则仅作用于该单一节点。
+ *
+ * 操作:
+ * - 添加到输入框:通过 files:dropped 事件让 RichComposer / MessageEditor 插入。
+ * - 刷新:目录刷新其子项,文件刷新根。
+ * - 在资源管理器中打开:后端接口未落地时,写路径到剪贴板。
+ * - 复制绝对/相对路径:多个时按行拼接。
  * 关闭:点击其它区域、按 Esc、滚动、失焦。
  */
 export function WorkspaceContextMenu({
@@ -26,6 +35,14 @@ export function WorkspaceContextMenu({
   onClose,
 }: WorkspaceContextMenuProps) {
   const root = useWorkspaceStore((s) => s.root)
+  const selectedPaths = useWorkspaceStore((s) => s.selectedPaths)
+
+  const targets = useMemo(() => {
+    if (selectedPaths.has(state.targetPath) && selectedPaths.size > 0) {
+      return Array.from(selectedPaths)
+    }
+    return [state.targetPath]
+  }, [selectedPaths, state.targetPath])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -43,6 +60,12 @@ export function WorkspaceContextMenu({
     }
   }, [onClose])
 
+  const handleInsertToInput = () => {
+    // 不带坐标 → 接收方按聚焦目标(当前输入框 / 正在编辑的消息)插入
+    emitFilesDropped(targets)
+    onClose()
+  }
+
   const handleRefresh = async () => {
     if (state.isDir) {
       await refreshDirectoryChildren(state.targetPath)
@@ -54,7 +77,7 @@ export function WorkspaceContextMenu({
 
   const handleCopyAbs = async () => {
     try {
-      await navigator.clipboard.writeText(state.targetPath)
+      await navigator.clipboard.writeText(targets.join("\n"))
     } catch {
       /* ignore */
     }
@@ -62,9 +85,9 @@ export function WorkspaceContextMenu({
   }
 
   const handleCopyRel = async () => {
-    const rel = toRelativePath(state.targetPath, root)
+    const text = targets.map((p) => toRelativePath(p, root)).join("\n")
     try {
-      await navigator.clipboard.writeText(rel)
+      await navigator.clipboard.writeText(text)
     } catch {
       /* ignore */
     }
@@ -73,32 +96,62 @@ export function WorkspaceContextMenu({
 
   const handleOpenInExplorer = () => {
     // 后端接口尚未落地时,先把路径写到剪贴板给用户使用。
-    void navigator.clipboard.writeText(state.targetPath)
+    void navigator.clipboard.writeText(targets.join("\n"))
     onClose()
   }
 
+  const count = targets.length
+  const insertLabel =
+    count > 1 ? `添加到输入框 (${count})` : "添加到输入框"
+
   return (
     <>
-      <div className="fixed inset-0 z-40" onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} />
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          onClose()
+        }}
+      />
       <div
         className={cn(
-          "fixed z-50 min-w-[180px] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
+          "fixed z-50 min-w-[200px] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
         )}
         style={{ left: state.x, top: state.y }}
         role="menu"
       >
-        <MenuItem icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={handleRefresh}>
+        <MenuItem
+          icon={<FilePlus2 className="h-3.5 w-3.5" />}
+          onClick={handleInsertToInput}
+        >
+          {insertLabel}
+        </MenuItem>
+        <div className="my-1 h-px bg-border" />
+        <MenuItem
+          icon={<RefreshCw className="h-3.5 w-3.5" />}
+          onClick={handleRefresh}
+        >
           刷新
         </MenuItem>
-        <MenuItem icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={handleOpenInExplorer}>
+        <MenuItem
+          icon={<ExternalLink className="h-3.5 w-3.5" />}
+          onClick={handleOpenInExplorer}
+        >
           在资源管理器中打开
         </MenuItem>
         <div className="my-1 h-px bg-border" />
-        <MenuItem icon={<ClipboardCopy className="h-3.5 w-3.5" />} onClick={handleCopyAbs}>
-          复制绝对路径
+        <MenuItem
+          icon={<ClipboardCopy className="h-3.5 w-3.5" />}
+          onClick={handleCopyAbs}
+        >
+          复制绝对路径{count > 1 ? ` (${count})` : ""}
         </MenuItem>
-        <MenuItem icon={<ClipboardCopy className="h-3.5 w-3.5" />} onClick={handleCopyRel}>
-          复制相对路径
+        <MenuItem
+          icon={<ClipboardCopy className="h-3.5 w-3.5" />}
+          onClick={handleCopyRel}
+        >
+          复制相对路径{count > 1 ? ` (${count})` : ""}
         </MenuItem>
       </div>
     </>
