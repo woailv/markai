@@ -4,7 +4,6 @@ import {
   ChevronDown,
   ChevronRight,
   Circle,
-  Copy,
   FileCode,
   FileEdit,
   FileMinus,
@@ -59,7 +58,6 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
   const [open, setOpen] = useState(
     defaultOpen ?? (hasBody ? defaultOpenFor(command.kind) : false),
   )
-  const [copied, setCopied] = useState(false)
 
   const status: ExecStatus | "pending" = result?.status ?? "pending"
   const meta = KIND_META[command.kind]
@@ -71,16 +69,6 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
   const canCopyAsFiles =
     command.kind === "REQUEST_FILE" ||
     command.kind === "REQUEST_DIRECTORY_LIST"
-
-  const handleCopyPath = async () => {
-    try {
-      await navigator.clipboard.writeText(primaryPath)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1200)
-    } catch {
-      // 忽略
-    }
-  }
 
   const handleCopyAsFiles = async () => {
     if (!canCopyAsFiles) return
@@ -139,19 +127,6 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
         </span>
 
         <PathDisplay path={primaryPath} />
-
-        <button
-          type="button"
-          onClick={handleCopyPath}
-          title="复制路径"
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          {copied ? (
-            <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-          ) : (
-            <Copy className="h-3 w-3" />
-          )}
-        </button>
 
         {canCopyAsFiles && (
           <button
