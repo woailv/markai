@@ -5,8 +5,8 @@ import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/
  * 事件名统一为 "workspace:changed"。
  */
 export interface WorkspaceChangedEvent {
-  /** 变更类型 */
-  type: "create" | "delete" | "rename" | "modify" | "move"
+  /** 变更类型。后端当前常量:create / remove / rename / modify;delete、move 保留兼容。 */
+  type: "create" | "remove" | "delete" | "rename" | "modify" | "move"
   /** 受影响的绝对路径(rename/move 时为新路径) */
   path: string
   /** 父目录绝对路径 */

@@ -131,11 +131,25 @@ function handleChange(evt: WorkspaceChangedEvent) {
       if (evt.entry) insertEntry(evt.parent, evt.entry)
       break
 
+    // 后端常量为 "remove"(WorkspaceChangeRemove);保留 "delete" 兼容。
+    case "remove":
     case "delete":
       state.removeSubtree(evt.path)
       break
 
+    // fsnotify 的 rename 事件只带旧路径,新名字随后通过独立的 create 事件到达。
+    // 因此这里等价于"移除旧路径"。若未来后端支持 oldPath+新 entry,则走 move 分支。
     case "rename":
+      if (evt.oldPath) {
+        state.removeSubtree(evt.oldPath)
+      } else {
+        state.removeSubtree(evt.path)
+      }
+      if (evt.entry) {
+        insertEntry(evt.parent, evt.entry)
+      }
+      break
+
     case "move": {
       // 删旧 + 插新;尽量迁移展开态
       const wasExpanded =
