@@ -1,7 +1,10 @@
 import { AlertTriangle, FolderPlus, Loader2, PanelLeftOpen } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { WorkspaceService } from "@/../bindings/prompttool/internal/services"
+import {
+  DialogService,
+  WorkspaceService,
+} from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore, WORKSPACE_LAYOUT } from "@/store"
 
@@ -118,10 +121,22 @@ function TreeArea() {
   )
 
   const handleSelectRoot = useCallback(async () => {
-    const input = window.prompt("输入工作区根目录(绝对路径):", "")
-    if (!input) return
+    let picked: string | undefined
     try {
-      const info = await WorkspaceService.SetRoot({ root: input.trim() })
+      const res = await DialogService.PickDirectory({
+        title: "选择工作区根目录",
+        default: root,
+      })
+      if (!res || res.canceled || !res.path) return
+      picked = res.path.trim()
+    } catch (err) {
+      console.error("[workspace] PickDirectory failed", err)
+      setWatchStatus("error", String(err))
+      return
+    }
+    if (!picked) return
+    try {
+      const info = await WorkspaceService.SetRoot({ root: picked })
       if (info) {
         setRoot(info.root)
         if (info.exists) {
@@ -138,7 +153,7 @@ function TreeArea() {
       console.error("[workspace] SetRoot failed", err)
       setWatchStatus("error", String(err))
     }
-  }, [setRoot, setWatchStatus])
+  }, [root, setRoot, setWatchStatus])
 
   const hasRoot = root && root.length > 0
   const rootAccessible = watchStatus !== "error"
