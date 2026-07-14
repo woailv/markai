@@ -9,3 +9,6 @@ export type { ConversationStore } from "./conversation.store"
 
 export { useDraftStore } from "./draft.store"
 export type { DraftStore } from "./draft.store"
+
+export { useWorkspaceStore, WORKSPACE_LAYOUT, sortEntries } from "./workspace.store"
+export type { TreeNode } from "./workspace.store"

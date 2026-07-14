@@ -22,6 +22,7 @@ import { ConfirmDialogHost, confirmDestructive } from "./executor/confirm-dialog
 import { HistorySidebar } from "./history-sidebar"
 import { withExecMeta } from "./executor/exec-meta"
 import type { ChatMessage, Template } from "./types"
+import { WorkspacePanel } from "./workspace-tree"
 
 export default function HomePage() {
   const navigate = useNavigate()
@@ -346,6 +347,7 @@ export default function HomePage() {
 
   return (
     <div className="flex h-svh overflow-hidden">
+      <WorkspacePanel />
       <ChatPanel
         messages={messages}
         onSend={handleSend}
