@@ -51,6 +51,19 @@ export const TreeNode = memo(function TreeNode({
   const toggleExpanded = useWorkspaceStore((s) => s.toggleExpanded)
   const setSelected = useWorkspaceStore((s) => s.setSelected)
 
+  const handleClick = useCallback(async () => {
+    if (!node) return
+    if (node.entry.isDir) {
+      const willExpand = !expanded
+      toggleExpanded(path)
+      if (willExpand && !node.loaded && !node.loading) {
+        await loadDirectoryChildren(path)
+      }
+    } else {
+      setSelected(path)
+    }
+  }, [expanded, node, path, setSelected, toggleExpanded])
+
   if (!node) return null
   const { entry } = node
 
@@ -61,18 +74,6 @@ export const TreeNode = memo(function TreeNode({
   if (searchQuery && !branchHasMatch(path)) return null
 
   const isMatch = searchQuery ? matcher(entry.name) : false
-
-  const handleClick = useCallback(async () => {
-    if (entry.isDir) {
-      const willExpand = !expanded
-      toggleExpanded(path)
-      if (willExpand && !node.loaded && !node.loading) {
-        await loadDirectoryChildren(path)
-      }
-    } else {
-      setSelected(path)
-    }
-  }, [entry.isDir, expanded, node.loaded, node.loading, path, setSelected, toggleExpanded])
 
   const handleContext = (e: React.MouseEvent) => {
     e.preventDefault()
