@@ -116,15 +116,29 @@ export const useTabStore = create<TabStore>((set) => ({
   },
 
   openNewChatTab: () => {
-    const id = genId()
-    set((state) => ({
-      tabs: [
-        ...state.tabs,
-        { kind: "chat", id, conversationId: null, title: "新会话" },
-      ],
-      activeTabId: id,
-    }))
-    return id
+    let resultId = ""
+    set((state) => {
+      // 若已存在未绑定 conversationId 的新会话 tab,直接激活它,避免重复创建
+      const existingNew = state.tabs.find(
+        (t) => t.kind === "chat" && t.conversationId === null,
+      )
+      if (existingNew) {
+        resultId = existingNew.id
+        return state.activeTabId === existingNew.id
+          ? state
+          : { activeTabId: existingNew.id }
+      }
+      const id = genId()
+      resultId = id
+      return {
+        tabs: [
+          ...state.tabs,
+          { kind: "chat", id, conversationId: null, title: "新会话" },
+        ],
+        activeTabId: id,
+      }
+    })
+    return resultId
   },
 
   closeTab: (tabId) => {
