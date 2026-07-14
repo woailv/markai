@@ -184,6 +184,24 @@ export interface MovePathInput {
 }
 
 /**
+ * PickDirectoryInput 目录选择入参。
+ * Title 为对话框标题;Default 为初始展开目录(可为空,由系统决定)。
+ */
+export interface PickDirectoryInput {
+    "title"?: string;
+    "default"?: string;
+}
+
+/**
+ * PickDirectoryResult 目录选择结果。
+ * Canceled=true 时 Path 为空,表示用户取消。
+ */
+export interface PickDirectoryResult {
+    "path": string;
+    "canceled": boolean;
+}
+
+/**
  * PromptTemplate 提示词模板持久化模型。
  */
 export interface PromptTemplate {

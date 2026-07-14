@@ -77,6 +77,10 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		},
 	})
 
+	if registry.Dialog != nil {
+		registry.Dialog.SetApp(wailsApp)
+	}
+
 	// 注入事件推送能力并启动工作区监听。启动失败已在 Service 内部降级,
 	// 这里只记录日志,不阻塞应用启动。
 	if registry.Workspace != nil {

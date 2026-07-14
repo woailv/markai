@@ -9,7 +9,10 @@ import {
 } from "lucide-react"
 import { useCallback, useState } from "react"
 
-import { WorkspaceService } from "@/../bindings/prompttool/internal/services"
+import {
+  DialogService,
+  WorkspaceService,
+} from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
@@ -42,12 +45,22 @@ export function WorkspaceToolbar() {
   }, [])
 
   const handleChangeRoot = useCallback(async () => {
-    const input = window.prompt("输入新的工作区根目录(绝对路径):", root)
-    if (!input) return
-    const trimmed = input.trim()
-    if (!trimmed) return
+    let picked: string | undefined
     try {
-      const info = await WorkspaceService.SetRoot({ root: trimmed })
+      const res = await DialogService.PickDirectory({
+        title: "选择工作区根目录",
+        default: root,
+      })
+      if (!res || res.canceled || !res.path) return
+      picked = res.path.trim()
+    } catch (err) {
+      console.error("[workspace] PickDirectory failed", err)
+      setWatchStatus("error", String(err))
+      return
+    }
+    if (!picked) return
+    try {
+      const info = await WorkspaceService.SetRoot({ root: picked })
       if (info) {
         setRoot(info.root)
         if (info.exists) {
