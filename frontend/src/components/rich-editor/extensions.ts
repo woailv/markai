@@ -2,6 +2,7 @@
  * 内核使用的 CodeMirror 扩展工厂 —— 主题、markdown、快捷键。
  * 三个业务场景通过内核的能力开关切换这些扩展,不再各自维护。
  */
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
 import {
   defaultHighlightStyle,
@@ -103,6 +104,19 @@ export const readOnlyExtensions: Extension[] = [
   EditorState.readOnly.of(true),
 ]
 
+/**
+ * 可编辑场景的基础扩展:
+ * - history: 让 undo/redo 覆盖所有 doc 变更(包括程序化 dispatch 的
+ *   文件路径插入、目录树插入、粘贴等),这样 Ctrl+Z 才能撤销。
+ * - defaultKeymap / historyKeymap: 提供 Ctrl+Z / Ctrl+Y 等标准按键。
+ * - scrollMargins: 光标靠近上下边缘时预留 24px 触发滚动,避免新行贴边不可见。
+ */
+export const editableBaseExtensions: Extension[] = [
+  history(),
+  keymap.of([...defaultKeymap, ...historyKeymap]),
+  EditorView.scrollMargins.of(() => ({ top: 24, bottom: 24 })),
+]
+
 /** placeholder 扩展的薄封装 */
 export function buildPlaceholder(text: string): Extension {
   return placeholderExt(text)
@@ -128,7 +142,10 @@ export function buildSubmitKeymap(
       {
         key: "Shift-Enter",
         run: (view) => {
-          view.dispatch(view.state.replaceSelection("\n"))
+          view.dispatch({
+            ...view.state.replaceSelection("\n"),
+            scrollIntoView: true,
+          })
           return true
         },
       },

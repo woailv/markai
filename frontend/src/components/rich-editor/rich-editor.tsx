@@ -17,6 +17,7 @@ import {
   buildMarkdownExtensions,
   buildPlaceholder,
   buildSubmitKeymap,
+  editableBaseExtensions,
   editableTheme,
   fileDropHandlers,
   invertedTheme,
@@ -140,6 +141,8 @@ export function RichEditor({
     // 主题
     if (mode === "editable") {
       exts.push(editableTheme)
+      // 撤销历史 + 默认按键 + 滚动边距(仅编辑态)
+      exts.push(...editableBaseExtensions)
     } else {
       exts.push(readonlyBaseTheme)
       if (mode === "readonly-inverted") exts.push(invertedTheme)
