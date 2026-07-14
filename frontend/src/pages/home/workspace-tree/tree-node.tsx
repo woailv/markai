@@ -13,6 +13,14 @@ import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 import type { TreeNode as TreeNodeData } from "@/store"
 
+import {
+  createDirectory,
+  createFile,
+  renameEntry,
+  siblingNamesOf,
+} from "./file-ops"
+import { InlineNameEditor } from "./inline-name-editor"
+import { useEditingStore } from "./use-editing-state"
 import { loadDirectoryChildren } from "./use-workspace-events"
 
 interface TreeNodeProps {
@@ -59,6 +67,8 @@ export const TreeNode = memo(function TreeNode({
   const selectOnly = useWorkspaceStore((s) => s.selectOnly)
   const toggleSelect = useWorkspaceStore((s) => s.toggleSelect)
   const rangeSelect = useWorkspaceStore((s) => s.rangeSelect)
+  const editing = useEditingStore((s) => s.editing)
+  const clearEditing = useEditingStore((s) => s.clear)
 
   const handleClick = useCallback(
     async (e: React.MouseEvent) => {
@@ -129,10 +139,40 @@ export const TreeNode = memo(function TreeNode({
 
   const selected = isMultiSelected || isPrimary
 
+  // 重命名内联态:替换整个行渲染
+  const isRenaming =
+    editing?.kind === "rename" && editing.path === path
+  // 新建内联态:当前节点是目标父目录且已展开
+  const showCreateSlot =
+    editing?.kind === "create" &&
+    editing.parentPath === path &&
+    entry.isDir &&
+    expanded
+
+  if (isRenaming) {
+    const parentPath = entry.parent
+    const siblings = siblingNamesOf(parentPath).filter((n) => n !== entry.name)
+    return (
+      <InlineNameEditor
+        depth={depth}
+        initialName={entry.name}
+        isDir={entry.isDir}
+        siblingNames={siblings}
+        originalName={entry.name}
+        onSubmit={async (name) => {
+          const res = await renameEntry(path, name)
+          if (res.ok) clearEditing()
+        }}
+        onCancel={clearEditing}
+      />
+    )
+  }
+
   return (
     <div>
       <button
         type="button"
+        data-tree-path={path}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContext}
@@ -192,6 +232,21 @@ export const TreeNode = memo(function TreeNode({
 
       {entry.isDir && expanded && (
         <div>
+          {showCreateSlot && editing?.kind === "create" && (
+            <InlineNameEditor
+              depth={depth + 1}
+              initialName=""
+              isDir={editing.isDir}
+              siblingNames={siblingNamesOf(path)}
+              onSubmit={async (name) => {
+                const res = editing.isDir
+                  ? await createDirectory(path, name)
+                  : await createFile(path, name)
+                if (res.ok) clearEditing()
+              }}
+              onCancel={clearEditing}
+            />
+          )}
           {node.error ? (
             <div
               className="px-2 py-1 text-[11px] text-destructive"
@@ -207,7 +262,7 @@ export const TreeNode = memo(function TreeNode({
               <Loader2 className="h-3 w-3 animate-spin" />
               <span>加载中…</span>
             </div>
-          ) : node.loaded && node.childrenPaths.length === 0 ? (
+          ) : node.loaded && node.childrenPaths.length === 0 && !showCreateSlot ? (
             <div
               className="px-2 py-1 text-[11px] italic text-muted-foreground/70"
               style={{ paddingLeft: 6 + (depth + 1) * 12 }}

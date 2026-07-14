@@ -189,6 +189,50 @@ func (s *FileService) Write(in WriteFileInput) (*WriteFileResult, error) {
 	}, nil
 }
 
+// Rename 在同一父目录内重命名文件/目录。
+// 若 newName 与原名相同,静默返回;若目标已存在,报错;若目标只读,会先清除只读属性。
+// 若 in.BatchID != 0,登记原路径与新路径的原始状态。
+func (s *FileService) Rename(in RenameInput) (*RenameResult, error) {
+	src, err := requireAbs(in.Path)
+	if err != nil {
+		return nil, fmt.Errorf("file: source: %w", err)
+	}
+	newName := strings.TrimSpace(in.NewName)
+	if newName == "" {
+		return nil, errors.New("file: new name required")
+	}
+	if strings.ContainsAny(newName, `\/:*?"<>|`) {
+		return nil, fmt.Errorf("file: invalid name %q", newName)
+	}
+	oldName := filepath.Base(src)
+	if oldName == newName {
+		return &RenameResult{Path: src, OldPath: src, Renamed: false}, nil
+	}
+	dst := filepath.Join(filepath.Dir(src), newName)
+	if _, err := os.Stat(src); err != nil {
+		return nil, fmt.Errorf("file: stat source %q: %w", src, err)
+	}
+	if _, err := os.Stat(dst); err == nil {
+		return nil, fmt.Errorf("file: destination %q already exists", dst)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("file: stat destination %q: %w", dst, err)
+	}
+	if err := s.recordSnapshot(in.BatchID, src); err != nil {
+		return nil, err
+	}
+	if err := s.recordSnapshot(in.BatchID, dst); err != nil {
+		return nil, err
+	}
+	// 只读属性下 Rename 也会失败(Windows),先清除。
+	if err := clearReadOnly(src); err != nil {
+		return nil, fmt.Errorf("file: clear readonly %q: %w", src, err)
+	}
+	if err := os.Rename(src, dst); err != nil {
+		return nil, fmt.Errorf("file: rename %q -> %q: %w", src, dst, err)
+	}
+	return &RenameResult{Path: dst, OldPath: src, Renamed: true}, nil
+}
+
 // Move 移动或重命名文件/目录。目标已存在则报错。
 // 若 in.BatchID != 0,会同时登记 source(存在) 与 destination(不存在) 的原始状态。
 func (s *FileService) Move(in MovePathInput) error {

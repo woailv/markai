@@ -249,6 +249,24 @@ export interface RenameConversationInput {
 }
 
 /**
+ * RenameInput 同级重命名入参。NewName 只能是纯文件名,不能包含分隔符。
+ */
+export interface RenameInput {
+    "path": string;
+    "newName": string;
+    "batchId"?: number;
+}
+
+/**
+ * RenameResult 重命名结果。Renamed=false 表示新旧同名,已静默跳过。
+ */
+export interface RenameResult {
+    "path": string;
+    "oldPath": string;
+    "renamed": boolean;
+}
+
+/**
  * SetTemplatesInput 保存会话启用的模板集合。
  */
 export interface SetTemplatesInput {

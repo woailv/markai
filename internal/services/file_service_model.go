@@ -63,3 +63,17 @@ type MovePathInput struct {
 	Destination string `json:"destination"`
 	BatchID     uint64 `json:"batchId,omitempty"`
 }
+
+// RenameInput 同级重命名入参。NewName 只能是纯文件名,不能包含分隔符。
+type RenameInput struct {
+	Path    string `json:"path"`
+	NewName string `json:"newName"`
+	BatchID uint64 `json:"batchId,omitempty"`
+}
+
+// RenameResult 重命名结果。Renamed=false 表示新旧同名,已静默跳过。
+type RenameResult struct {
+	Path    string `json:"path"`
+	OldPath string `json:"oldPath"`
+	Renamed bool   `json:"renamed"`
+}

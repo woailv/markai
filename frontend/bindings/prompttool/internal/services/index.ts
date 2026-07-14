@@ -42,6 +42,8 @@ export type {
     PromptTemplate,
     ReadFileResult,
     RenameConversationInput,
+    RenameInput,
+    RenameResult,
     SetTemplatesInput,
     SetWorkspaceRootInput,
     UndoBatchResult,

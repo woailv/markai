@@ -77,6 +77,15 @@ export function Read(path: string): $CancellablePromise<$models.ReadFileResult |
 }
 
 /**
+ * Rename 在同一父目录内重命名文件/目录。
+ * 若 newName 与原名相同,静默返回;若目标已存在,报错;若目标只读,会先清除只读属性。
+ * 若 in.BatchID != 0,登记原路径与新路径的原始状态。
+ */
+export function Rename($in: $models.RenameInput): $CancellablePromise<$models.RenameResult | null> {
+    return $Call.ByID(1470862269, $in);
+}
+
+/**
  * Write 写入文件内容,自动创建父目录。
  * 返回是否为新建以及 unified diff(与旧内容对比)。
  * 若 in.BatchID != 0,写盘前会登记原始状态用于撤销。

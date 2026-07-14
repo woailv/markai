@@ -2,8 +2,12 @@ import {
   ClipboardCopy,
   ExternalLink,
   FilePlus2,
+  FilePlus,
+  FolderPlus,
   ListTree,
+  Pencil,
   RefreshCw,
+  Trash2,
 } from "lucide-react"
 import { useEffect, useMemo } from "react"
 
@@ -11,13 +15,17 @@ import { FileService } from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
+import { resolveCreationParent } from "./file-ops"
 import { emitFilesDropped } from "./selection-utils"
 import type { ContextMenuState } from "./types"
+import { useEditingStore } from "./use-editing-state"
 import { refreshDirectoryChildren, refreshRoot } from "./use-workspace-events"
 
 interface WorkspaceContextMenuProps {
   state: ContextMenuState
   onClose: () => void
+  /** 请求宿主发起删除(带确认对话框)。 */
+  onRequestDelete: (paths: string[]) => void
 }
 
 /**
@@ -35,9 +43,14 @@ interface WorkspaceContextMenuProps {
 export function WorkspaceContextMenu({
   state,
   onClose,
+  onRequestDelete,
 }: WorkspaceContextMenuProps) {
   const root = useWorkspaceStore((s) => s.root)
   const selectedPaths = useWorkspaceStore((s) => s.selectedPaths)
+  const nodes = useWorkspaceStore((s) => s.nodes)
+  const setExpanded = useWorkspaceStore((s) => s.setExpanded)
+  const startCreate = useEditingStore((s) => s.startCreate)
+  const startRename = useEditingStore((s) => s.startRename)
 
   const targets = useMemo(() => {
     if (selectedPaths.has(state.targetPath) && selectedPaths.size > 0) {
@@ -101,6 +114,29 @@ export function WorkspaceContextMenu({
     void navigator.clipboard.writeText(targets.join("\n"))
     onClose()
   }
+
+  const handleNew = (isDir: boolean) => {
+    // 命中位置:若目标是目录则在其内部,否则在其父目录。
+    const parent = resolveCreationParent(state.targetPath)
+    // 若是目录则确保展开,让内联输入行可见
+    if (parent && parent !== root) {
+      setExpanded(parent, true)
+    }
+    startCreate(parent, isDir)
+    onClose()
+  }
+
+  const handleRename = () => {
+    startRename(state.targetPath)
+    onClose()
+  }
+
+  const handleDelete = () => {
+    onRequestDelete(targets)
+    onClose()
+  }
+
+  const canRename = !!nodes[state.targetPath]
 
   /**
    * 生成选中项的目录树结构,插入到当前聚焦的输入框或消息编辑器中。
@@ -167,6 +203,7 @@ export function WorkspaceContextMenu({
     count > 1 ? `添加到输入框 (${count})` : "添加到输入框"
   const treeLabel =
     count > 1 ? `插入目录树 (${count})` : "插入目录树"
+  const deleteLabel = count > 1 ? `删除 (${count})` : "删除"
 
   return (
     <>
@@ -196,6 +233,33 @@ export function WorkspaceContextMenu({
           onClick={handleInsertTree}
         >
           {treeLabel}
+        </MenuItem>
+        <div className="my-1 h-px bg-border" />
+        <MenuItem
+          icon={<FilePlus className="h-3.5 w-3.5" />}
+          onClick={() => handleNew(false)}
+        >
+          新建文件
+        </MenuItem>
+        <MenuItem
+          icon={<FolderPlus className="h-3.5 w-3.5" />}
+          onClick={() => handleNew(true)}
+        >
+          新建文件夹
+        </MenuItem>
+        <MenuItem
+          icon={<Pencil className="h-3.5 w-3.5" />}
+          onClick={handleRename}
+          disabled={!canRename || count > 1}
+        >
+          重命名
+        </MenuItem>
+        <MenuItem
+          icon={<Trash2 className="h-3.5 w-3.5" />}
+          onClick={handleDelete}
+          tone="danger"
+        >
+          {deleteLabel}
         </MenuItem>
         <div className="my-1 h-px bg-border" />
         <MenuItem
@@ -232,19 +296,37 @@ function MenuItem({
   icon,
   onClick,
   children,
+  disabled,
+  tone,
 }: {
   icon: React.ReactNode
   onClick: () => void
   children: React.ReactNode
+  disabled?: boolean
+  tone?: "danger"
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-muted"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs",
+        disabled
+          ? "cursor-not-allowed opacity-50"
+          : "hover:bg-muted",
+        tone === "danger" && !disabled && "text-destructive hover:bg-destructive/10",
+      )}
       role="menuitem"
     >
-      <span className="text-muted-foreground">{icon}</span>
+      <span
+        className={cn(
+          "text-muted-foreground",
+          tone === "danger" && !disabled && "text-destructive",
+        )}
+      >
+        {icon}
+      </span>
       <span>{children}</span>
     </button>
   )
