@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTabStore } from "@/store"
 
+import { FilePanel } from "../file-panel"
 import { ChatTabView } from "./chat-tab-view"
 
 interface TabContentProps {
@@ -60,6 +61,12 @@ export function TabContent({
                 conversationId={tab.conversationId}
                 onConversationsChanged={onConversationsChanged}
                 onOpenHistory={onOpenHistory}
+              />
+            ) : tab.kind === "file" ? (
+              <FilePanel
+                tabId={tab.id}
+                path={tab.path}
+                invalid={tab.invalid}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

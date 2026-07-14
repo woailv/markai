@@ -21,6 +21,10 @@ export type Tab =
       title: string
       dirty?: boolean
       pinned?: boolean
+      /** true 表示预览 tab(斜体标题,可被下一次单击复用) */
+      preview?: boolean
+      /** true 表示路径已失效(文件被删除或不可访问),UI 上加警告图标 */
+      invalid?: boolean
     }
   | {
       kind: "template"
@@ -43,8 +47,41 @@ export interface TabStore {
   /** 显式打开一个空的新会话 tab(总是新建,不复用)。 */
   openNewChatTab: () => string
 
+  /**
+   * 打开文件为正式 tab。若该路径已有 tab(无论预览/正式),激活并升级为正式。
+   * 若当前存在预览 tab 且该预览 tab 未被显式固化,则复用预览 tab 的槽位。
+   */
+  openFile: (path: string, title?: string) => string
+  /**
+   * 单击目录树时的"预览"模式:复用同一个预览 tab 位,只更新 path/title。
+   * 若目标路径已有正式 tab,直接激活它,不新增预览。
+   */
+  openFilePreview: (path: string, title?: string) => string
+  /** 将预览 tab 固化为正式 tab(双击预览 tab 或修改内容时调用)。 */
+  promoteToPermanent: (tabId: string) => void
+  /** 设置 file/template tab 的 dirty 状态。 */
+  setDirty: (tabId: string, dirty: boolean) => void
+  /**
+   * 文件重命名/移动后同步 tab 状态。若新路径已被其他 file tab 占用,合并并关闭当前。
+   */
+  updateFilePath: (oldPath: string, newPath: string, newTitle?: string) => void
+  /**
+   * 目录被删除或路径失效时,批量标记为失效状态。
+   * 不直接删除 tab,以便用户看到警告并手动处理。
+   */
+  markFilePathInvalid: (path: string, invalid?: boolean) => void
+  /** 固定/取消固定 tab。 */
+  togglePin: (tabId: string) => void
+
   /** 关闭 tab。若关闭的是激活 tab,自动激活相邻 tab。 */
   closeTab: (tabId: string) => void
+  /** 关闭除 tabId 外的其他所有非固定 tab。 */
+  closeOthers: (tabId: string) => void
+  /** 关闭 tabId 右侧的所有非固定 tab。 */
+  closeToRight: (tabId: string) => void
+  /** 关闭所有非固定 tab。 */
+  closeAll: () => void
+
   /** 激活指定 tab。 */
   activateTab: (tabId: string) => void
   /** 更新 tab 的展示标题。 */
@@ -66,6 +103,22 @@ function findChatTabByConvId(tabs: Tab[], convId: number): Tab | undefined {
   return tabs.find(
     (t) => t.kind === "chat" && t.conversationId === convId,
   )
+}
+
+/** 找到指定路径的 file tab(不区分 preview/正式)。 */
+function findFileTabByPath(tabs: Tab[], path: string): Tab | undefined {
+  return tabs.find((t) => t.kind === "file" && t.path === path)
+}
+
+/** 找到当前预览 file tab(至多一个)。 */
+function findPreviewFileTab(tabs: Tab[]): Tab | undefined {
+  return tabs.find((t) => t.kind === "file" && t.preview === true)
+}
+
+/** 从路径中提取文件名作为默认标题。 */
+function baseNameOf(p: string): string {
+  const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
+  return idx >= 0 ? p.slice(idx + 1) : p
 }
 
 /** 计算关闭 tab 后应该激活的 tab id。 */
@@ -144,6 +197,169 @@ export const useTabStore = create<TabStore>()(
     return resultId
   },
 
+  openFile: (path, title) => {
+    let resultId = ""
+    set((state) => {
+      const finalTitle = title ?? baseNameOf(path)
+      // 已存在 → 激活并升级为正式
+      const existing = findFileTabByPath(state.tabs, path)
+      if (existing && existing.kind === "file") {
+        resultId = existing.id
+        return {
+          tabs: state.tabs.map((t) =>
+            t.id === existing.id && t.kind === "file"
+              ? { ...t, preview: false, title: finalTitle }
+              : t,
+          ),
+          activeTabId: existing.id,
+        }
+      }
+      // 复用预览槽(若有)
+      const preview = findPreviewFileTab(state.tabs)
+      if (preview && preview.kind === "file") {
+        resultId = preview.id
+        return {
+          tabs: state.tabs.map((t) =>
+            t.id === preview.id && t.kind === "file"
+              ? { ...t, path, title: finalTitle, preview: false, dirty: false, invalid: false }
+              : t,
+          ),
+          activeTabId: preview.id,
+        }
+      }
+      const id = genId()
+      resultId = id
+      const newTab: Tab = {
+        kind: "file",
+        id,
+        path,
+        title: finalTitle,
+      }
+      return {
+        tabs: [...state.tabs, newTab],
+        activeTabId: id,
+      }
+    })
+    return resultId
+  },
+
+  openFilePreview: (path, title) => {
+    let resultId = ""
+    set((state) => {
+      const finalTitle = title ?? baseNameOf(path)
+      // 已有正式 tab → 直接激活,不动预览状态
+      const existing = findFileTabByPath(state.tabs, path)
+      if (existing && existing.kind === "file") {
+        resultId = existing.id
+        return { activeTabId: existing.id }
+      }
+      // 复用现有预览槽
+      const preview = findPreviewFileTab(state.tabs)
+      if (preview && preview.kind === "file") {
+        resultId = preview.id
+        return {
+          tabs: state.tabs.map((t) =>
+            t.id === preview.id && t.kind === "file"
+              ? { ...t, path, title: finalTitle, dirty: false, invalid: false }
+              : t,
+          ),
+          activeTabId: preview.id,
+        }
+      }
+      const id = genId()
+      resultId = id
+      const newTab: Tab = {
+        kind: "file",
+        id,
+        path,
+        title: finalTitle,
+        preview: true,
+      }
+      return {
+        tabs: [...state.tabs, newTab],
+        activeTabId: id,
+      }
+    })
+    return resultId
+  },
+
+  promoteToPermanent: (tabId) => {
+    set((state) => {
+      const t = state.tabs.find((x) => x.id === tabId)
+      if (!t || t.kind !== "file" || !t.preview) return state
+      return {
+        tabs: state.tabs.map((x) =>
+          x.id === tabId && x.kind === "file" ? { ...x, preview: false } : x,
+        ),
+      }
+    })
+  },
+
+  setDirty: (tabId, dirty) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) => {
+        if (t.id !== tabId) return t
+        if (t.kind === "file") {
+          // 变脏时自动固化预览
+          const next: Tab = { ...t, dirty, preview: dirty ? false : t.preview }
+          return next
+        }
+        if (t.kind === "template") return { ...t, dirty }
+        return t
+      }),
+    }))
+  },
+
+  updateFilePath: (oldPath, newPath, newTitle) => {
+    set((state) => {
+      const cur = state.tabs.find(
+        (t) => t.kind === "file" && t.path === oldPath,
+      )
+      if (!cur || cur.kind !== "file") return state
+      const dup = state.tabs.find(
+        (t) => t.kind === "file" && t.id !== cur.id && t.path === newPath,
+      )
+      const title = newTitle ?? baseNameOf(newPath)
+      if (dup && dup.kind === "file") {
+        // 合并:激活 dup,关闭 cur
+        return {
+          tabs: state.tabs.filter((t) => t.id !== cur.id),
+          activeTabId:
+            state.activeTabId === cur.id ? dup.id : state.activeTabId,
+        }
+      }
+      return {
+        tabs: state.tabs.map((t) =>
+          t.id === cur.id && t.kind === "file"
+            ? { ...t, path: newPath, title, invalid: false }
+            : t,
+        ),
+      }
+    })
+  },
+
+  markFilePathInvalid: (path, invalid = true) => {
+    set((state) => {
+      let changed = false
+      const nextTabs = state.tabs.map((t) => {
+        if (t.kind === "file" && t.path === path && !!t.invalid !== invalid) {
+          changed = true
+          return { ...t, invalid }
+        }
+        return t
+      })
+      return changed ? { tabs: nextTabs } : state
+    })
+  },
+
+  togglePin: (tabId) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, pinned: !t.pinned } : t,
+      ),
+    }))
+  },
+
   closeTab: (tabId) => {
     set((state) => {
       const idx = state.tabs.findIndex((t) => t.id === tabId)
@@ -152,6 +368,43 @@ export const useTabStore = create<TabStore>()(
       return {
         tabs: state.tabs.filter((_, i) => i !== idx),
         activeTabId: nextActive,
+      }
+    })
+  },
+
+  closeOthers: (tabId) => {
+    set((state) => {
+      const keep = state.tabs.filter((t) => t.id === tabId || t.pinned)
+      const activeStillExists = keep.some((t) => t.id === state.activeTabId)
+      return {
+        tabs: keep,
+        activeTabId: activeStillExists ? state.activeTabId : tabId,
+      }
+    })
+  },
+
+  closeToRight: (tabId) => {
+    set((state) => {
+      const idx = state.tabs.findIndex((t) => t.id === tabId)
+      if (idx < 0) return state
+      const keep = state.tabs.filter((t, i) => i <= idx || t.pinned)
+      const activeStillExists = keep.some((t) => t.id === state.activeTabId)
+      return {
+        tabs: keep,
+        activeTabId: activeStillExists ? state.activeTabId : tabId,
+      }
+    })
+  },
+
+  closeAll: () => {
+    set((state) => {
+      const keep = state.tabs.filter((t) => t.pinned)
+      const activeStillExists = keep.some((t) => t.id === state.activeTabId)
+      return {
+        tabs: keep,
+        activeTabId: activeStillExists
+          ? state.activeTabId
+          : keep[keep.length - 1]?.id ?? null,
       }
     })
   },
@@ -215,13 +468,13 @@ export const useTabStore = create<TabStore>()(
       name: "prompttool-tabs",
       storage: createJSONStorage(() => localStorage),
       version: 1,
-      // 只持久化必要字段;过滤掉尚未绑定 conversationId 的临时 chat tab,
-      // 以及带 dirty 状态的未保存 file/template tab(内容未落库,恢复无意义)。
+      // 只持久化必要字段;过滤掉尚未绑定 conversationId 的临时 chat tab、
+      // 预览态 file tab(用户尚未固化,恢复无意义),以及带 dirty 状态的未保存 tab。
       partialize: (state) => {
         const persistedTabs = state.tabs.filter((t) => {
           if (t.kind === "chat") return t.conversationId !== null
           if (t.kind === "template") return t.templateId !== null
-          if (t.kind === "file") return !t.dirty
+          if (t.kind === "file") return !t.dirty && !t.preview
           return true
         })
         const activeStillExists = persistedTabs.some(

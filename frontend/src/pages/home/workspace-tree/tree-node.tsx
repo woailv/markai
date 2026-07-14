@@ -10,7 +10,7 @@ import {
 import { memo, useCallback } from "react"
 
 import { cn } from "@/lib/utils"
-import { useWorkspaceStore } from "@/store"
+import { useTabStore, useWorkspaceStore } from "@/store"
 import type { TreeNode as TreeNodeData } from "@/store"
 
 import {
@@ -69,6 +69,8 @@ export const TreeNode = memo(function TreeNode({
   const rangeSelect = useWorkspaceStore((s) => s.rangeSelect)
   const editing = useEditingStore((s) => s.editing)
   const clearEditing = useEditingStore((s) => s.clear)
+  const openFile = useTabStore((s) => s.openFile)
+  const openFilePreview = useTabStore((s) => s.openFilePreview)
 
   const handleClick = useCallback(
     async (e: React.MouseEvent) => {
@@ -87,18 +89,35 @@ export const TreeNode = memo(function TreeNode({
 
       // 单击:仅选中(不展开目录)。目录展开走 chevron / 双击。
       selectOnly(path)
+      // 文件:进入预览 tab(斜体标题,复用同一预览槽)。
+      if (!node.entry.isDir) {
+        openFilePreview(path, node.entry.name)
+      }
     },
-    [node, path, rangeSelect, toggleSelect, selectOnly, getVisibleOrder],
+    [
+      node,
+      path,
+      rangeSelect,
+      toggleSelect,
+      selectOnly,
+      getVisibleOrder,
+      openFilePreview,
+    ],
   )
 
   const handleDoubleClick = useCallback(async () => {
-    if (!node || !node.entry.isDir) return
-    const willExpand = !expanded
-    toggleExpanded(path)
-    if (willExpand && !node.loaded && !node.loading) {
-      await loadDirectoryChildren(path)
+    if (!node) return
+    if (node.entry.isDir) {
+      const willExpand = !expanded
+      toggleExpanded(path)
+      if (willExpand && !node.loaded && !node.loading) {
+        await loadDirectoryChildren(path)
+      }
+      return
     }
-  }, [expanded, node, path, toggleExpanded])
+    // 文件双击:固化为正式 tab
+    openFile(path, node.entry.name)
+  }, [expanded, node, path, toggleExpanded, openFile])
 
   const handleChevronClick = useCallback(
     async (e: React.MouseEvent) => {

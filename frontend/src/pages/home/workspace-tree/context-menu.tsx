@@ -3,6 +3,7 @@ import {
   ExternalLink,
   FilePlus2,
   FilePlus,
+  FileText,
   FolderPlus,
   ListTree,
   Pencil,
@@ -13,7 +14,7 @@ import { useEffect, useMemo } from "react"
 
 import { FileService } from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
-import { useWorkspaceStore } from "@/store"
+import { useTabStore, useWorkspaceStore } from "@/store"
 
 import { resolveCreationParent } from "./file-ops"
 import { emitFilesDropped } from "./selection-utils"
@@ -49,8 +50,10 @@ export function WorkspaceContextMenu({
   const selectedPaths = useWorkspaceStore((s) => s.selectedPaths)
   const nodes = useWorkspaceStore((s) => s.nodes)
   const setExpanded = useWorkspaceStore((s) => s.setExpanded)
+  const nodesMap = useWorkspaceStore((s) => s.nodes)
   const startCreate = useEditingStore((s) => s.startCreate)
   const startRename = useEditingStore((s) => s.startRename)
+  const openFile = useTabStore((s) => s.openFile)
 
   const targets = useMemo(() => {
     if (selectedPaths.has(state.targetPath) && selectedPaths.size > 0) {
@@ -136,6 +139,21 @@ export function WorkspaceContextMenu({
     startRename(state.targetPath)
     onClose()
   }
+
+  const handleOpenInNewTab = () => {
+    for (const p of targets) {
+      const n = nodesMap[p]
+      if (n && !n.entry.isDir) {
+        openFile(p, n.entry.name)
+      }
+    }
+    onClose()
+  }
+
+  const anyFileTarget = targets.some((p) => {
+    const n = nodesMap[p]
+    return n && !n.entry.isDir
+  })
 
   const handleDelete = () => {
     onRequestDelete(targets)
@@ -228,6 +246,14 @@ export function WorkspaceContextMenu({
         style={{ left: state.x, top: state.y }}
         role="menu"
       >
+        {anyFileTarget && (
+          <MenuItem
+            icon={<FileText className="h-3.5 w-3.5" />}
+            onClick={handleOpenInNewTab}
+          >
+            在新标签中打开
+          </MenuItem>
+        )}
         <MenuItem
           icon={<FilePlus2 className="h-3.5 w-3.5" />}
           onClick={handleInsertToInput}
