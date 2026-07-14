@@ -25,8 +25,27 @@ export function useWorkspaceEvents() {
 
     const bootstrap = async () => {
       try {
-        const info = await WorkspaceService.Start()
+        // 优先使用前端持久化的 root(用户上次打开的目录),
+        // 若与后端当前 root 不一致,则通过 SetRoot 恢复。
+        const persistedRoot = store.getState().root
+        let info = await WorkspaceService.Start()
         if (cancelled) return
+
+        if (persistedRoot && persistedRoot.length > 0) {
+          const backendRoot = info?.root ?? ""
+          if (backendRoot !== persistedRoot) {
+            try {
+              const restored = await WorkspaceService.SetRoot({ root: persistedRoot })
+              if (cancelled) return
+              if (restored) info = restored
+            } catch (err) {
+              console.error("[workspace] restore persisted root failed", err)
+              store.getState().setWatchStatus("error", String(err))
+              return
+            }
+          }
+        }
+
         if (info) {
           store.getState().setRoot(info.root)
           if (info.exists) {
