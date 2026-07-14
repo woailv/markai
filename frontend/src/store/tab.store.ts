@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { persist, createJSONStorage } from "zustand/middleware"
 
 /**
  * Tab 元信息。仅存"这个 tab 是什么"以及最少展示字段,
@@ -84,7 +85,9 @@ function pickNextActive(
   return remaining[Math.max(0, Math.min(nextIndex, remaining.length - 1))].id
 }
 
-export const useTabStore = create<TabStore>((set) => ({
+export const useTabStore = create<TabStore>()(
+  persist(
+    (set) => ({
   tabs: [],
   activeTabId: null,
 
@@ -207,4 +210,30 @@ export const useTabStore = create<TabStore>((set) => ({
       return changed ? { tabs: nextTabs } : state
     })
   },
-}))
+    }),
+    {
+      name: "prompttool-tabs",
+      storage: createJSONStorage(() => localStorage),
+      version: 1,
+      // 只持久化必要字段;过滤掉尚未绑定 conversationId 的临时 chat tab,
+      // 以及带 dirty 状态的未保存 file/template tab(内容未落库,恢复无意义)。
+      partialize: (state) => {
+        const persistedTabs = state.tabs.filter((t) => {
+          if (t.kind === "chat") return t.conversationId !== null
+          if (t.kind === "template") return t.templateId !== null
+          if (t.kind === "file") return !t.dirty
+          return true
+        })
+        const activeStillExists = persistedTabs.some(
+          (t) => t.id === state.activeTabId,
+        )
+        return {
+          tabs: persistedTabs,
+          activeTabId: activeStillExists
+            ? state.activeTabId
+            : persistedTabs[persistedTabs.length - 1]?.id ?? null,
+        }
+      },
+    },
+  ),
+)

@@ -28,24 +28,41 @@ export default function HomePage() {
   const updateTitle = useTabStore((s) => s.updateTitle)
   const onConversationDeleted = useTabStore((s) => s.onConversationDeleted)
 
+  const [conversationsLoaded, setConversationsLoaded] = useState(false)
+
   const loadConversations = useCallback(async () => {
     const list = await ConversationService.List()
     setConversations(list || [])
+    setConversationsLoaded(true)
   }, [])
 
   useEffect(() => {
     void loadConversations()
   }, [loadConversations])
 
-  // 若还没有任何 tab,启动时开一个空的新会话 tab,保证界面不空。
+  // 启动流程:
+  //   1. 会话列表加载完成后,清理指向已删除会话的持久化 tab
+  //   2. 若清理后仍无 tab,才开一个空的新会话 tab
   // 注意:React 18 StrictMode 下 effect 会执行两次,必须从 store 读最新状态,
   // 不能依赖闭包里的 tabs,否则会创建两个"新会话"标签。
   useEffect(() => {
+    if (!conversationsLoaded) return
+    const validIds = new Set(conversations.map((c) => c.id))
+    const currentTabs = useTabStore.getState().tabs
+    currentTabs.forEach((t) => {
+      if (
+        t.kind === "chat" &&
+        t.conversationId != null &&
+        !validIds.has(t.conversationId)
+      ) {
+        onConversationDeleted(t.conversationId)
+      }
+    })
     if (useTabStore.getState().tabs.length === 0) {
       openNewChatTab()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [conversationsLoaded])
 
   // 每次会话列表变化,同步一次 chat tab 的标题
   useEffect(() => {
