@@ -48,6 +48,13 @@ export function DeleteWithBatch($in: $models.DeleteInput): $CancellablePromise<v
 }
 
 /**
+ * GenerateTree 为选定的文件或目录生成类似 tree 命令的结构文本。
+ */
+export function GenerateTree($in: $models.GenerateTreeInput): $CancellablePromise<$models.GenerateTreeResult | null> {
+    return $Call.ByID(1306658312, $in);
+}
+
+/**
  * List 列出目录内容(非递归),目录在前、名称升序。
  */
 export function List(path: string): $CancellablePromise<$models.FileEntry[] | null> {

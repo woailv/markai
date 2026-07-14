@@ -45,6 +45,17 @@ type WriteFileResult struct {
 	Diff    string `json:"diff"`
 }
 
+// GenerateTreeInput 生成目录树入参。
+type GenerateTreeInput struct {
+	Paths    []string `json:"paths"`
+	MaxDepth int      `json:"maxDepth"` // 最大深度限制，防止大型目录导致无限递归
+}
+
+// GenerateTreeResult 生成目录树出参。
+type GenerateTreeResult struct {
+	TreeText string `json:"treeText"`
+}
+
 // MovePathInput 文件/目录移动或重命名入参。
 // BatchID 可选:若非零,登记 source 与 destination 的原始状态以支持撤销。
 type MovePathInput struct {

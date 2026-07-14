@@ -152,6 +152,25 @@ export interface FileEntry {
 }
 
 /**
+ * GenerateTreeInput 生成目录树入参。
+ */
+export interface GenerateTreeInput {
+    "paths": string[] | null;
+
+    /**
+     * 最大深度限制，防止大型目录导致无限递归
+     */
+    "maxDepth": number;
+}
+
+/**
+ * GenerateTreeResult 生成目录树出参。
+ */
+export interface GenerateTreeResult {
+    "treeText": string;
+}
+
+/**
  * ListWorkspaceInput 列出目录一层内容的入参。
  * Path 为空时使用当前根目录;非空时必须位于根目录之内。
  */

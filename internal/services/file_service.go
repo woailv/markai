@@ -30,6 +30,89 @@ func (s *FileService) recordSnapshot(batchID uint64, absPath string) error {
 	return s.snapshots.recordIfNeeded(batchID, absPath)
 }
 
+// GenerateTree 为选定的文件或目录生成类似 tree 命令的结构文本。
+func (s *FileService) GenerateTree(in GenerateTreeInput) (*GenerateTreeResult, error) {
+	if in.MaxDepth <= 0 {
+		in.MaxDepth = 3 // 默认限制 3 层深度，兼顾 LLM Token 消耗与性能
+	}
+	var sb strings.Builder
+	for i, p := range in.Paths {
+		abs, err := requireAbs(p)
+		if err != nil {
+			continue
+		}
+		stat, err := os.Stat(abs)
+		if err != nil {
+			continue
+		}
+
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(filepath.Base(abs))
+		if stat.IsDir() {
+			sb.WriteString("/\n")
+			s.buildTree(&sb, abs, "", 1, in.MaxDepth)
+		} else {
+			sb.WriteString("\n")
+		}
+	}
+	return &GenerateTreeResult{TreeText: sb.String()}, nil
+}
+
+// buildTree 递归构建目录树文本，带有深度限制防抖。
+func (s *FileService) buildTree(sb *strings.Builder, dirPath string, prefix string, currentDepth, maxDepth int) {
+	if currentDepth > maxDepth {
+		sb.WriteString(prefix + "└── ... (已达到最大深度)\n")
+		return
+	}
+
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		sb.WriteString(prefix + "└── (error reading directory)\n")
+		return
+	}
+
+	var valid []os.DirEntry
+	for _, e := range entries {
+		// 默认过滤隐藏文件
+		if !strings.HasPrefix(e.Name(), ".") {
+			valid = append(valid, e)
+		}
+	}
+	sort.Slice(valid, func(i, j int) bool {
+		if valid[i].IsDir() != valid[j].IsDir() {
+			return valid[i].IsDir()
+		}
+		return strings.ToLower(valid[i].Name()) < strings.ToLower(valid[j].Name())
+	})
+
+	for i, e := range valid {
+		isLast := i == len(valid)-1
+		marker := "├── "
+		if isLast {
+			marker = "└── "
+		}
+
+		sb.WriteString(prefix)
+		sb.WriteString(marker)
+		sb.WriteString(e.Name())
+		if e.IsDir() {
+			sb.WriteString("/")
+		}
+		sb.WriteString("\n")
+
+		if e.IsDir() {
+			newPrefix := prefix + "│   "
+			if isLast {
+				newPrefix = prefix + "    "
+			}
+			s.buildTree(sb, filepath.Join(dirPath, e.Name()), newPrefix, currentDepth+1, maxDepth)
+		}
+	}
+}
+
 // Read 读取文件内容。
 func (s *FileService) Read(path string) (*ReadFileResult, error) {
 	abs, err := requireAbs(path)

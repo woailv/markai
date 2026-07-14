@@ -32,6 +32,8 @@ export type {
     DeleteInput,
     Emitter,
     FileEntry,
+    GenerateTreeInput,
+    GenerateTreeResult,
     ListWorkspaceInput,
     MessageDTO,
     MovePathInput,
