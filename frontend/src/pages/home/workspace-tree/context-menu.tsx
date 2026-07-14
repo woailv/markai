@@ -2,10 +2,12 @@ import {
   ClipboardCopy,
   ExternalLink,
   FilePlus2,
+  ListTree,
   RefreshCw,
 } from "lucide-react"
 import { useEffect, useMemo } from "react"
 
+import { FileService } from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
@@ -100,9 +102,71 @@ export function WorkspaceContextMenu({
     onClose()
   }
 
+  /**
+   * 生成选中项的目录树结构,插入到当前聚焦的输入框或消息编辑器中。
+   * 定位聚焦编辑器的策略与 files:dropped 一致:查找 data-file-drop-target
+   * 容器内的 contenteditable,然后用 document.execCommand("insertText")
+   * 把 tree 文本包裹在 ```text ``` 代码块中插入,避免破坏富文本结构。
+   */
+  const handleInsertTree = async () => {
+    try {
+      const result = await FileService.GenerateTree({
+        paths: targets,
+        maxDepth: 8,
+      })
+      const treeText = result?.treeText?.trim()
+      if (!treeText) {
+        onClose()
+        return
+      }
+
+      const wrapped = `\n\`\`\`text\n${treeText}\n\`\`\`\n`
+
+      // 定位聚焦的可编辑区域
+      const active = document.activeElement as HTMLElement | null
+      let editable: HTMLElement | null = null
+
+      if (active && active.isContentEditable) {
+        editable = active
+      } else {
+        const targets = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[data-file-drop-target="true"]',
+          ),
+        )
+        for (const t of targets) {
+          const ce = t.querySelector<HTMLElement>('[contenteditable="true"]')
+          if (ce) {
+            editable = ce
+            break
+          }
+        }
+      }
+
+      if (editable) {
+        editable.focus()
+        // execCommand 已被标注为遗留 API,但在 ProseMirror / contenteditable
+        // 富文本编辑器中仍是最兼容的"在光标处插入纯文本"手段。
+        const ok = document.execCommand("insertText", false, wrapped)
+        if (!ok) {
+          // 兜底:降级为剪贴板
+          await navigator.clipboard.writeText(wrapped)
+        }
+      } else {
+        // 无聚焦编辑器 → 复制到剪贴板
+        await navigator.clipboard.writeText(wrapped)
+      }
+    } catch {
+      /* ignore */
+    }
+    onClose()
+  }
+
   const count = targets.length
   const insertLabel =
     count > 1 ? `添加到输入框 (${count})` : "添加到输入框"
+  const treeLabel =
+    count > 1 ? `插入目录树 (${count})` : "插入目录树"
 
   return (
     <>
@@ -126,6 +190,12 @@ export function WorkspaceContextMenu({
           onClick={handleInsertToInput}
         >
           {insertLabel}
+        </MenuItem>
+        <MenuItem
+          icon={<ListTree className="h-3.5 w-3.5" />}
+          onClick={handleInsertTree}
+        >
+          {treeLabel}
         </MenuItem>
         <div className="my-1 h-px bg-border" />
         <MenuItem
