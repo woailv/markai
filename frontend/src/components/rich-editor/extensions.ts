@@ -2,7 +2,12 @@
  * 内核使用的 CodeMirror 扩展工厂 —— 主题、markdown、快捷键。
  * 三个业务场景通过内核的能力开关切换这些扩展,不再各自维护。
  */
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands"
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands"
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown"
 import {
   defaultHighlightStyle,
@@ -113,7 +118,7 @@ export const readOnlyExtensions: Extension[] = [
  */
 export const editableBaseExtensions: Extension[] = [
   history(),
-  keymap.of([...defaultKeymap, ...historyKeymap]),
+  keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
   EditorView.scrollMargins.of(() => ({ top: 24, bottom: 24 })),
 ]
 
