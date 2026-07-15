@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { ConversationService } from "@/../bindings/prompttool/internal/services"
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
@@ -201,35 +201,14 @@ function MainSplit({
   const width = useWorkspaceStore((s) => s.width)
   const setWidth = useWorkspaceStore((s) => s.setWidth)
 
-  // 记录容器像素宽度以便 onLayout 回写像素值。
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [containerW, setContainerW] = useState<number>(() =>
-    typeof window !== "undefined" ? window.innerWidth : 1200,
-  )
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const update = () => setContainerW(el.getBoundingClientRect().width || 1)
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-
-  // 初始工作区面板尺寸(百分比)。仅在挂载时计算一次,避免拖动过程中被 store→pct 循环回弹。
-  const initialWorkspacePct = useMemo(() => {
-    const w = typeof window !== "undefined" ? window.innerWidth : 1200
-    const px: number = width ?? 0
-    return clampPct((px / w) * 100)
+  // 初始工作区面板尺寸(像素)。仅在挂载时计算一次,避免拖动过程中被 store→px 循环回弹。
+  const initialWorkspacePx = useMemo(() => {
+    return Math.max(
+      WORKSPACE_LAYOUT.MIN_WIDTH,
+      Math.min(width ?? 300, WORKSPACE_LAYOUT.MAX_WIDTH)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const workspaceMinPct = clampPct(
-    (WORKSPACE_LAYOUT.MIN_WIDTH / Math.max(containerW, 1)) * 100,
-  )
-  const workspaceMaxPct = clampPct(
-    (WORKSPACE_LAYOUT.MAX_WIDTH / Math.max(containerW, 1)) * 100,
-  )
 
   const mainContent = (
     <div className="flex h-full min-w-0 flex-1 flex-col">
@@ -254,7 +233,7 @@ function MainSplit({
   ) : null
 
   return (
-    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
       {collapsed ? (
         <>
           {mainContent}
@@ -267,9 +246,10 @@ function MainSplit({
             className="flex min-h-0 min-w-0 flex-1"
           >
             <ResizablePanel
-              defaultSize={`${initialWorkspacePct}%`}
-              minSize={`${workspaceMinPct}%`}
-              maxSize={`${workspaceMaxPct}%`}
+              defaultSize={initialWorkspacePx}
+              minSize={WORKSPACE_LAYOUT.MIN_WIDTH}
+              maxSize={WORKSPACE_LAYOUT.MAX_WIDTH}
+              groupResizeBehavior="preserve-pixel-size"
               onResize={(panelSize) => {
                 // v4 回调签名: { asPercentage, inPixels }
                 const px = Math.round(panelSize.inPixels)
@@ -285,7 +265,6 @@ function MainSplit({
               className="w-px bg-border hover:bg-primary/30"
             />
             <ResizablePanel
-              defaultSize={`${100 - initialWorkspacePct}%`}
               minSize="20%"
               className="flex min-w-0"
             >
@@ -297,11 +276,4 @@ function MainSplit({
       )}
     </div>
   )
-}
-
-function clampPct(v: number): number {
-  if (!Number.isFinite(v)) return 20
-  if (v < 5) return 5
-  if (v > 80) return 80
-  return v
 }
