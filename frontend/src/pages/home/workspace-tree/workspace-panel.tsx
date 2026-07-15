@@ -320,27 +320,6 @@ function TreeArea() {
         <StatusBar tone="error" message="监听失败" detail={watchReason} />
       )}
 
-      <div className="flex items-center gap-1 border-b px-2 py-1">
-        <button
-          type="button"
-          onClick={() => handleToolbarCreate(false)}
-          disabled={!hasRoot || !rootAccessible}
-          title="新建文件"
-          className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-        >
-          <FilePlus className="h-3 w-3" />
-        </button>
-        <button
-          type="button"
-          onClick={() => handleToolbarCreate(true)}
-          disabled={!hasRoot || !rootAccessible}
-          title="新建文件夹"
-          className="flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
-        >
-          <FolderPlus className="h-3 w-3" />
-        </button>
-      </div>
-
       <div
         ref={scrollAreaRef}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1"
