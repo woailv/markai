@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { useTabStore } from "@/store"
 
+import { useCloseSaveHandler } from "../tabs/close-coordinator"
 import { FileToolbar } from "./file-toolbar"
 import { useFileBuffer } from "./use-file-buffer"
 import { classifyPath, isImagePath, languageIdOf } from "./viewer-registry"
@@ -66,6 +67,18 @@ export function FilePanel({ tabId, path, invalid }: FilePanelProps) {
       console.error("[file-panel] save failed", res.error)
     }
   }, [save])
+
+  // 注册给 close-coordinator:关闭 dirty tab 选择"保存"时会调用此 handler。
+  // 返回 true 表示保存成功可关闭,false 表示失败需保持 tab 打开。
+  const closeSaveHandler = useCallback(async (): Promise<boolean> => {
+    const res = await save()
+    if (!res.ok) {
+      console.error("[file-panel] close-save failed", res.error)
+      return false
+    }
+    return true
+  }, [save])
+  useCloseSaveHandler(tabId, closeSaveHandler)
 
   if (invalid) {
     return (

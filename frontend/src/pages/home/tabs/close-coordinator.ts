@@ -63,18 +63,38 @@ export async function requestCloseTab(tabId: string): Promise<boolean> {
   // save
   const handler = saveHandlers.get(tabId)
   if (!handler) {
-    // 没注册 handler 也没办法保存,退化为丢弃,避免卡死
+    // 没注册 handler:无法保存,不能悄悄丢弃用户改动,退化为取消关闭
     console.warn("[close-coordinator] no save handler for tab", tabId)
-    store.closeTab(tabId)
-    return true
+    window.alert(`无法保存 "${title}":未注册保存处理器,已取消关闭。`)
+    return false
   }
   try {
     const ok = await handler()
-    if (!ok) return false
+    if (!ok) {
+      // 保存失败:保持 tab 打开,提示用户,避免"点了保存但静默失败"
+      window.alert(`保存 "${title}" 失败,已取消关闭。请检查后重试。`)
+      return false
+    }
+    // 关闭前再确认 tab 状态已经不是 dirty,防止 handler 声称成功但状态未同步
+    const after = useTabStore.getState().tabs.find((x) => x.id === tabId)
+    if (after) {
+      const stillDirty =
+        (after.kind === "file" && !!after.dirty) ||
+        (after.kind === "template" && !!after.dirty)
+      if (stillDirty) {
+        console.error(
+          "[close-coordinator] save handler returned true but tab is still dirty",
+          tabId,
+        )
+        window.alert(`保存 "${title}" 未生效,已取消关闭。`)
+        return false
+      }
+    }
     store.closeTab(tabId)
     return true
   } catch (err) {
     console.error("[close-coordinator] save handler threw", err)
+    window.alert(`保存 "${title}" 出错:${(err as Error)?.message ?? err}`)
     return false
   }
 }
