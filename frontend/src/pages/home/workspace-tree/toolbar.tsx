@@ -2,12 +2,13 @@ import {
   Eye,
   EyeOff,
   FolderCog,
+  History,
   PanelLeftClose,
   RefreshCw,
   Search,
   X,
 } from "lucide-react"
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
   DialogService,
@@ -16,6 +17,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
+import { RecentList } from "../recent/recent-list"
 import { refreshRoot } from "./use-workspace-events"
 
 /**
@@ -33,7 +35,23 @@ export function WorkspaceToolbar() {
   const root = useWorkspaceStore((s) => s.root)
 
   const [searchOpen, setSearchOpen] = useState(false)
+  const [recentOpen, setRecentOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const recentPanelRef = useRef<HTMLDivElement>(null)
+  const recentBtnRef = useRef<HTMLButtonElement>(null)
+
+  // 点击面板外部时自动关闭最近记录浮层
+  useEffect(() => {
+    if (!recentOpen) return
+    const onDown = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (recentPanelRef.current?.contains(target)) return
+      if (recentBtnRef.current?.contains(target)) return
+      setRecentOpen(false)
+    }
+    window.addEventListener("mousedown", onDown)
+    return () => window.removeEventListener("mousedown", onDown)
+  }, [recentOpen])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -100,6 +118,14 @@ export function WorkspaceToolbar() {
             <Search className="h-3 w-3" />
           </IconButton>
           <IconButton
+            title="最近打开"
+            active={recentOpen}
+            onClick={() => setRecentOpen((v) => !v)}
+            buttonRef={recentBtnRef}
+          >
+            <History className="h-3 w-3" />
+          </IconButton>
+          <IconButton
             title={showHidden ? "隐藏点开头文件" : "显示隐藏文件"}
             active={showHidden}
             onClick={() => setShowHidden(!showHidden)}
@@ -140,6 +166,17 @@ export function WorkspaceToolbar() {
           )}
         </div>
       )}
+
+      {recentOpen && (
+        <div
+          ref={recentPanelRef}
+          className="absolute left-0 right-0 top-full z-20 max-h-[320px] overflow-hidden border-b border-l border-r bg-background shadow-md"
+        >
+          <div className="h-[300px]">
+            <RecentList onPick={() => setRecentOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -149,14 +186,17 @@ function IconButton({
   onClick,
   active,
   children,
+  buttonRef,
 }: {
   title: string
   onClick: () => void
   active?: boolean
   children: React.ReactNode
+  buttonRef?: React.Ref<HTMLButtonElement>
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
       title={title}

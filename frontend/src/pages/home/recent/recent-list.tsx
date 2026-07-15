@@ -16,8 +16,9 @@ import { refreshRoot } from "../workspace-tree/use-workspace-events"
  * - 点击条目:若为 dir,设为工作区根目录
  * - 悬停显示 移除 按钮
  * - 空状态提供"打开目录"入口
+ * - onPick:成功切换根目录/选择目录后回调,供浮层自动关闭
  */
-export function RecentList() {
+export function RecentList({ onPick }: { onPick?: () => void } = {}) {
   const items = useRecentStore((s) => s.items)
   const loading = useRecentStore((s) => s.loading)
   const loaded = useRecentStore((s) => s.loaded)
@@ -70,6 +71,7 @@ export function RecentList() {
                 key={item.id}
                 item={item}
                 onRemove={() => void remove(item.id)}
+                onPick={onPick}
               />
             ))}
           </ul>
@@ -82,9 +84,11 @@ export function RecentList() {
 function RecentRow({
   item,
   onRemove,
+  onPick,
 }: {
   item: RecentItem
   onRemove: () => void
+  onPick?: () => void
 }) {
   const setRoot = useWorkspaceStore((s) => s.setRoot)
   const setWatchStatus = useWorkspaceStore((s) => s.setWatchStatus)
@@ -104,6 +108,7 @@ function RecentRow({
       } else {
         setWatchStatus("error", info.reason || "路径不存在")
       }
+      onPick?.()
     } catch (err) {
       console.error("[recent] open failed", err)
       setWatchStatus("error", String(err))
