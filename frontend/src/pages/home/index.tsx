@@ -267,13 +267,13 @@ function MainSplit({
             className="flex min-h-0 min-w-0 flex-1"
           >
             <ResizablePanel
-              defaultSize={initialWorkspacePct}
-              minSize={workspaceMinPct}
-              maxSize={workspaceMaxPct}
-              onResize={(pct) => {
-                if (containerW <= 0) return
-                const numPct = pct as unknown as number
-                const px = Math.round((numPct / 100) * containerW)
+              defaultSize={`${initialWorkspacePct}%`}
+              minSize={`${workspaceMinPct}%`}
+              maxSize={`${workspaceMaxPct}%`}
+              onResize={(panelSize) => {
+                // v4 回调签名: { asPercentage, inPixels }
+                const px = Math.round(panelSize.inPixels)
+                if (!Number.isFinite(px) || px <= 0) return
                 if (Math.abs(px - width) >= 1) setWidth(px)
               }}
               className="flex min-w-0"
@@ -285,8 +285,8 @@ function MainSplit({
               className="w-px bg-border hover:bg-primary/30"
             />
             <ResizablePanel
-              defaultSize={100 - initialWorkspacePct}
-              minSize={20}
+              defaultSize={`${100 - initialWorkspacePct}%`}
+              minSize="20%"
               className="flex min-w-0"
             >
               {mainContent}
