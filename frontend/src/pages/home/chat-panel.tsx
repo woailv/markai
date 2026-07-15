@@ -24,10 +24,22 @@ import {
   type RichEditorHandle,
   documentToPlainText,
 } from "@/components/rich-editor"
+import { Button } from "@/components/ui/button"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
 import { AssistantMessage } from "./assistant/assistant-message"
-import { ChatToolbar } from "./chat-toolbar"
 import { RichComposer } from "./composer/rich-composer"
 import { stripExecMeta } from "./executor/exec-meta"
 import {
@@ -60,7 +72,6 @@ export function ChatPanel({
   messages,
   onSend,
   onClear,
-  onOpenHistory,
   onDeleteMessage,
   onEditMessage,
   templates,
@@ -69,7 +80,6 @@ export function ChatPanel({
   onCreateTemplate,
   onEditTemplate,
   onDeleteTemplate,
-  conversationTitle,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -86,7 +96,6 @@ export function ChatPanel({
     return () => el.removeEventListener("scroll", onScroll)
   }, [])
 
-  // 消息更新时,仅当"贴底"时才平滑滚动,避免流式输出中打断用户回读
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !stickToBottomRef.current) return
@@ -168,38 +177,37 @@ export function ChatPanel({
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
-      <div className="shrink-0 border-b px-4 py-2">
-        <div className="flex w-full items-center justify-between gap-3">
-          <h2
-            className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight"
-            title={conversationTitle || "新会话"}
-          >
-            {conversationTitle || "新会话"}
-          </h2>
-          <ChatToolbar
-            messages={messages}
-            onClear={onClear}
-            onOpenHistory={onOpenHistory}
-            templates={templates}
-          />
-        </div>
-      </div>
-
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
+      <ChatAreaContextMenu
+        messages={messages}
+        templates={templates}
+        onClear={onClear}
       >
-        <div className="w-full">
-          {messages.length === 0 ? (
-            <EmptyState />
-          ) : (
-            <div className="flex flex-col">
-              {messages.map((msg, idx) => {
-                const prev = messages[idx - 1]
-                const isGrouped = prev?.role === msg.role
-                if (msg.role === "assistant") {
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
+        >
+          <div className="w-full">
+            {messages.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="flex flex-col">
+                {messages.map((msg, idx) => {
+                  const prev = messages[idx - 1]
+                  const isGrouped = prev?.role === msg.role
+                  if (msg.role === "assistant") {
+                    return (
+                      <AssistantRow
+                        key={msg.id}
+                        msg={msg}
+                        isGrouped={isGrouped}
+                        onDelete={onDeleteMessage}
+                        onEdit={onEditMessage}
+                        templates={templates}
+                      />
+                    )
+                  }
                   return (
-                    <AssistantRow
+                    <UserBubble
                       key={msg.id}
                       msg={msg}
                       isGrouped={isGrouped}
@@ -208,22 +216,12 @@ export function ChatPanel({
                       templates={templates}
                     />
                   )
-                }
-                return (
-                  <UserBubble
-                    key={msg.id}
-                    msg={msg}
-                    isGrouped={isGrouped}
-                    onDelete={onDeleteMessage}
-                    onEdit={onEditMessage}
-                    templates={templates}
-                  />
-                )
-              })}
-            </div>
-          )}
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </ChatAreaContextMenu>
 
       <div className="shrink-0 border-t bg-background/50 px-4 py-3">
         <div className="w-full">
@@ -243,9 +241,139 @@ export function ChatPanel({
 }
 
 /**
- * 用户消息气泡:与旧 MessageBubble 中的 user 分支等价。
- * 保留右侧对齐、深色主色底、悬浮操作栏、折叠预览。
+ * 会话滚动区域的右键菜单。
+ * 承载 "复制全部" 与 "清空会话" 两项操作:
+ * - 复制全部:将 templates/files 上下文与对话拼接后写入剪贴板;
+ *   若最后一条为 user 消息,追加 assistant 引导后缀。
+ * - 清空会话:通过 Popover 二次确认,避免误清空。
  */
+function ChatAreaContextMenu({
+  messages,
+  templates,
+  onClear,
+  children,
+}: {
+  messages: ChatMessage[]
+  templates: Template[]
+  onClear: () => void
+  children: React.ReactNode
+}) {
+  const [copying, setCopying] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const hasMessages = messages.length > 0
+
+  const handleCopyAll = async () => {
+    if (!hasMessages || copying) return
+    setCopying(true)
+    try {
+      const conversation = messages
+        .map(
+          (m) =>
+            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${m.content}`,
+        )
+        .join("\n\n---\n\n")
+
+      const paths = extractFilePathsFromMessages(messages.map((m) => m.content))
+      const filesContext = await buildFilesContext(paths)
+      const templatesContext = buildTemplatesContext(
+        messages.map((m) => m.content),
+        templates,
+      )
+
+      const prefixes = [templatesContext, filesContext].filter(
+        (s) => s.length > 0,
+      )
+      let finalText =
+        prefixes.length > 0
+          ? `${prefixes.join("\n\n")}\n\n${conversation}`
+          : conversation
+
+      if (messages[messages.length - 1].role === "user") {
+        finalText += "\n\n---\n\nPlease provide the assistant's response:"
+      }
+
+      await navigator.clipboard.writeText(finalText)
+    } catch (err) {
+      console.error("复制失败:", err)
+    } finally {
+      setCopying(false)
+    }
+  }
+
+  return (
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger className="flex min-h-0 flex-1 flex-col">
+          {children}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem
+            disabled={!hasMessages || copying}
+            onClick={handleCopyAll}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            <span>复制全部</span>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            variant="destructive"
+            disabled={!hasMessages}
+            onClick={() => setConfirmOpen(true)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>清空会话</span>
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      {/* 清空确认 Popover:锚点为屏幕中心的隐形按钮 */}
+      <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <PopoverTrigger
+          render={
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              className="pointer-events-none fixed left-1/2 top-1/2 h-0 w-0 -translate-x-1/2 -translate-y-1/2 opacity-0"
+            />
+          }
+        />
+        <PopoverContent align="center" className="w-64 p-3">
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">清空会话</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                清空后无法恢复,确定继续?
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  onClear()
+                  setConfirmOpen(false)
+                }}
+              >
+                清空
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    </>
+  )
+}
+
 function UserBubble({
   msg,
   isGrouped,
@@ -342,11 +470,6 @@ function UserBubble({
   )
 }
 
-/**
- * AI 消息展示行:去气泡、通栏、左侧细竖线 + 头像。
- * 编辑态复用 MessageEditor;正常态走 AssistantMessage。
- * 悬浮操作栏挂在头像右侧顶部,不占据正文空间。
- */
 function AssistantRow({
   msg,
   isGrouped,
@@ -463,11 +586,6 @@ function AssistantRow({
   )
 }
 
-/**
- * 共享的消息级操作 hook:复制/折叠/编辑状态与回调。
- * user 与 assistant 都需要这些能力,行为一致。
- * onEdit 由外层传入,handleSave 会在内容确有变化时透传给它。
- */
 function useMessageActions(
   msg: ChatMessage,
   templates: Template[],
@@ -495,7 +613,6 @@ function useMessageActions(
 
       let finalText: string
       if (isUser) {
-        // 用户消息:保留 header + 正文 + templates/files 上下文
         const header = `**User**:\n\n${body}`
         const tokenPaths = extractFilePathsFromMessages([body])
         const filesContext = await buildFilesContext(tokenPaths)
@@ -508,8 +625,6 @@ function useMessageActions(
             ? `${prefixes.join("\n\n")}\n\n${header}`
             : header
       } else {
-        // AI 消息:只复制 REQUEST_FILE / REQUEST_DIRECTORY_LIST 对应的文件上下文,
-        // 不包含 **Assistant**: header 与消息正文
         const requestPaths = extractRequestPathsFromMessages([body])
         finalText = await buildFilesContext(requestPaths)
       }
@@ -518,7 +633,7 @@ function useMessageActions(
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1200)
     } catch {
-      // 忽略
+      // ignore
     }
   }
 
@@ -555,7 +670,6 @@ function useMessageActions(
   }
 }
 
-/** 用户气泡的悬浮操作栏(挂在气泡底部左/右) */
 function MessageActionBar({
   side,
   copied,
@@ -647,21 +761,6 @@ function TimeLabel({ createdAt }: { createdAt: string }) {
   )
 }
 
-// UserBubble / AssistantRow 需要通过 hook 拿到 onEdit,而 hook 内的 handleSave
-// 又需触发外层 onEdit(id, newContent)。上面的 hook 只管本地状态,真正的持久化
-// 通过下面的 wrapper 处理:重新实现 handleSave 关联 onEdit。
-// 为了保持简洁,直接在两个 Row 组件里用组合方式覆盖 handleSave。
-//
-// 说明:UserBubble/AssistantRow 中传入的 handleSave 目前只关闭编辑态,
-// 不调用 onEdit。为避免行为回退,以下补丁在两个组件里替换 MessageEditor 的 onSave。
-// 但这已经在原始 MessageBubble 中通过闭包直接完成 —— 我们同样在两个 Row 里
-// 直接编写 wrapper,而不是修改共享 hook。
-
-/**
- * 编辑态消息编辑器。
- * 与 RichComposer 一致的能力:file token chip、文件拖入、Wails files:dropped 事件。
- * Enter 不提交(避免误保存),用户需显式点击 √ 保存;Esc 取消。
- */
 function MessageEditor({
   value,
   onChange,
