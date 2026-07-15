@@ -193,7 +193,9 @@ export function ChatPanel({
               <div className="flex flex-col">
                 {messages.map((msg, idx) => {
                   const prev = messages[idx - 1]
+                  const next = messages[idx + 1]
                   const isGrouped = prev?.role === msg.role
+                  const isGroupedNext = next?.role === msg.role
                   if (msg.role === "assistant") {
                     return (
                       <AssistantRow
@@ -211,6 +213,7 @@ export function ChatPanel({
                       key={msg.id}
                       msg={msg}
                       isGrouped={isGrouped}
+                      isGroupedNext={isGroupedNext}
                       onDelete={onDeleteMessage}
                       onEdit={onEditMessage}
                       templates={templates}
@@ -377,12 +380,14 @@ function ChatAreaContextMenu({
 function UserBubble({
   msg,
   isGrouped,
+  isGroupedNext,
   onDelete,
   onEdit,
   templates,
 }: {
   msg: ChatMessage
   isGrouped: boolean
+  isGroupedNext: boolean
   onDelete?: (id: number) => void
   onEdit?: (id: number, newContent: string) => void
   templates: Template[]
@@ -393,13 +398,23 @@ function UserBubble({
     setEditContent,
     copied,
     collapsed,
-    collapsedPreview,
+    lineCount,
     setCollapsed,
     handleCopy,
     handleSave,
     handleCancelEdit,
     handleStartEdit,
-  } = useMessageActions(msg, templates, onEdit)
+  } = useMessageActions(msg, templates, onEdit, { autoCollapse: true })
+
+  // 圆角策略:根据分组位置动态调整右上/右下角
+  // 独立单条:! isGrouped && ! isGroupedNext -> 仅右上收紧
+  // 分组首条:! isGrouped &&   isGroupedNext -> 右上收紧 + 右下收紧
+  // 分组中间:  isGrouped &&   isGroupedNext -> 右上收紧 + 右下收紧
+  // 分组末条:  isGrouped && ! isGroupedNext -> 仅右上收紧
+  const cornerClass = cn(
+    "rounded-tr-md",
+    isGroupedNext && "rounded-br-md",
+  )
 
   return (
     <div
@@ -424,8 +439,12 @@ function UserBubble({
         <div
           className={cn(
             "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
-            "bg-primary/95 text-primary-foreground",
-            isGrouped ? "rounded-tr-2xl" : "rounded-tr-md",
+            // tinted 背景 + 极轻微上到下渐变(顶部略亮,底部略暗,差异 < 5%)
+            "bg-primary/10 dark:bg-primary/15 text-foreground",
+            "bg-gradient-to-b from-primary/[0.13] to-primary/[0.09]",
+            "dark:from-primary/[0.18] dark:to-primary/[0.14]",
+            "ring-1 ring-primary/20",
+            cornerClass,
           )}
         >
           {editing ? (
@@ -436,19 +455,13 @@ function UserBubble({
               onCancel={handleCancelEdit}
             />
           ) : collapsed ? (
-            <button
-              type="button"
-              onClick={() => setCollapsed(false)}
-              title="点击展开"
-              className="flex w-full items-center gap-1.5 text-left text-[12.5px] italic text-primary-foreground/80 hover:text-primary-foreground"
-            >
-              <ChevronRight className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {collapsedPreview || "(空消息)"}
-              </span>
-            </button>
+            <UserBubbleCollapsed
+              content={msg.content}
+              lineCount={lineCount}
+              onExpand={() => setCollapsed(false)}
+            />
           ) : (
-            <MessageContent content={msg.content} inverted />
+            <MessageContent content={msg.content} />
           )}
 
           {!editing && typeof msg.id === "number" && (
@@ -465,6 +478,52 @@ function UserBubble({
           )}
         </div>
         <TimeLabel createdAt={msg.createdAt} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 用户气泡折叠态:
+ * 显示原文的前若干行,底部覆盖一层从气泡背景色渐隐到透明的遮罩,
+ * 遮罩下方居中显示胶囊按钮以展开全文。
+ */
+function UserBubbleCollapsed({
+  content,
+  lineCount,
+  onExpand,
+}: {
+  content: string
+  lineCount: number
+  onExpand: () => void
+}) {
+  return (
+    <div className="relative">
+      {/* 折叠预览:限制最大高度,内容超出部分被遮罩覆盖 */}
+      <div className="max-h-[10rem] overflow-hidden">
+        <MessageContent content={content} />
+      </div>
+      {/* 底部渐隐遮罩 —— 使用与气泡一致的 tinted 颜色 */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-x-0 bottom-0 h-10",
+          "bg-gradient-to-t from-primary/10 to-transparent",
+          "dark:from-primary/15",
+        )}
+      />
+      {/* 展开按钮 */}
+      <div className="mt-1 flex justify-center">
+        <button
+          type="button"
+          onClick={onExpand}
+          className={cn(
+            "relative z-10 rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[11px] text-foreground/80",
+            "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground",
+          )}
+        >
+          展开全文 · {lineCount} 行
+        </button>
       </div>
     </div>
   )
@@ -590,15 +649,40 @@ function useMessageActions(
   msg: ChatMessage,
   templates: Template[],
   onEdit?: (id: number, newContent: string) => void,
+  options?: { autoCollapse?: boolean },
 ) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(msg.content)
   const [copied, setCopied] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+
+  // 自动折叠阈值
+  const AUTO_COLLAPSE_LINES = 12
+  const AUTO_COLLAPSE_CHARS = 800
+
+  const plainContent = stripExecMeta(msg.content)
+  const lineCount = plainContent.split("\n").length
+  const charCount = plainContent.length
+  const shouldAutoCollapse =
+    !!options?.autoCollapse &&
+    (lineCount > AUTO_COLLAPSE_LINES || charCount > AUTO_COLLAPSE_CHARS)
+
+  const [collapsed, setCollapsed] = useState<boolean>(shouldAutoCollapse)
+  const userToggledRef = useRef(false)
+
+  // 首次挂载后,若用户从未手动切换过折叠状态,则跟随内容变化重新计算
+  // (仅用于消息内容被编辑等场景;一旦用户手动展开/收起,不再自动折叠)
+  useEffect(() => {
+    if (userToggledRef.current) return
+    setCollapsed(shouldAutoCollapse)
+  }, [shouldAutoCollapse])
+
+  const setCollapsedByUser = useCallback((v: boolean | ((p: boolean) => boolean)) => {
+    userToggledRef.current = true
+    setCollapsed(v)
+  }, [])
 
   const collapsedPreview = (() => {
-    const plain = stripExecMeta(msg.content)
-    const firstLine = plain
+    const firstLine = plainContent
       .split("\n")
       .map((s) => s.trim())
       .find((s) => s.length > 0) ?? ""
@@ -654,8 +738,9 @@ function useMessageActions(
     setEditContent,
     copied,
     collapsed,
-    setCollapsed,
+    setCollapsed: setCollapsedByUser,
     collapsedPreview,
+    lineCount,
     handleCopy,
     handleSave,
     handleCancelEdit: () => {
