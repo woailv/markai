@@ -123,11 +123,16 @@ export function WorkspaceContextMenu({
     if (parent && parent !== root) {
       setExpanded(parent, true)
     }
-    startCreate(parent, isDir)
+    // 延迟触发，避免 ContextMenu 关闭时的焦点回退导致新建/重命名输入框瞬间失焦而被取消
+    setTimeout(() => {
+      startCreate(parent, isDir)
+    }, 50)
   }
 
   const handleRename = () => {
-    startRename(state.targetPath)
+    setTimeout(() => {
+      startRename(state.targetPath)
+    }, 50)
   }
 
   const handleOpenInNewTab = () => {
