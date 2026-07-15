@@ -2,13 +2,12 @@ import { markdown } from "@codemirror/lang-markdown"
 import { EditorView } from "@codemirror/view"
 import CodeMirror from "@uiw/react-codemirror"
 import { AlertTriangle, FileWarning, Loader2 } from "lucide-react"
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect } from "react"
 
 import { cn } from "@/lib/utils"
 import { useTabStore } from "@/store"
 
 import { useCloseSaveHandler } from "../tabs/close-coordinator"
-import { FileToolbar } from "./file-toolbar"
 import { useFileBuffer } from "./use-file-buffer"
 import { classifyPath, isImagePath, languageIdOf } from "./viewer-registry"
 
@@ -20,22 +19,15 @@ interface FilePanelProps {
 
 /**
  * 单个 file tab 的宿主。
- * - 顶部面包屑由本组件直接展示为文件名 + 路径
  * - 中间根据文件类型分派 viewer
- * - 底部工具栏
  * - Ctrl+S 保存(仅在本 panel 聚焦时生效)
  */
 export function FilePanel({ tabId, path, invalid }: FilePanelProps) {
-  const { buffer, setContent, save, reload, dismissExternalChange } =
+  const { buffer, setContent, save, reload } =
     useFileBuffer({ tabId, path })
   const closeTab = useTabStore((s) => s.closeTab)
 
   const viewerKind = classifyPath(path)
-
-  const lineCount = useMemo(
-    () => (buffer.content ? buffer.content.split("\n").length : 0),
-    [buffer.content],
-  )
 
   // Ctrl+S:保存;Ctrl+Shift+P 预留。仅在当前是激活 tab 时生效。
   useEffect(() => {
@@ -51,22 +43,6 @@ export function FilePanel({ tabId, path, invalid }: FilePanelProps) {
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [save, tabId])
-
-  const handleCopyAll = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(buffer.content)
-    } catch {
-      /* ignore */
-    }
-  }, [buffer.content])
-
-  const handleSave = useCallback(async () => {
-    const res = await save()
-    if (!res.ok && res.error) {
-      // 简易反馈:控制台 + 保留 externallyChanged 让用户决策
-      console.error("[file-panel] save failed", res.error)
-    }
-  }, [save])
 
   // 注册给 close-coordinator:关闭 dirty tab 选择"保存"时会调用此 handler。
   // 返回 true 表示保存成功可关闭,false 表示失败需保持 tab 打开。
@@ -88,23 +64,6 @@ export function FilePanel({ tabId, path, invalid }: FilePanelProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-medium">
-            {baseNameOf(path)}
-            {buffer.dirty && (
-              <span
-                className="ml-1 inline-block h-1.5 w-1.5 translate-y-[-1px] rounded-full bg-primary"
-                title="有未保存改动"
-              />
-            )}
-          </div>
-        </div>
-        <div className="text-[10.5px] text-muted-foreground">
-          {viewerKind === "text" ? languageIdOf(path) : viewerKind}
-        </div>
-      </div>
-
       <div className="min-h-0 flex-1 overflow-hidden">
         {buffer.status === "loading" ? (
           <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
@@ -153,21 +112,6 @@ export function FilePanel({ tabId, path, invalid }: FilePanelProps) {
           </div>
         )}
       </div>
-
-      <FileToolbar
-        path={path}
-        dirty={buffer.dirty}
-        readonly={viewerKind !== "text"}
-        lineCount={lineCount}
-        charCount={buffer.content.length}
-        externallyChanged={buffer.externallyChanged}
-        onSave={handleSave}
-        onReload={() => {
-          dismissExternalChange()
-          void reload()
-        }}
-        onCopyAll={handleCopyAll}
-      />
     </div>
   )
 }
@@ -236,8 +180,3 @@ function MissingFile({
 
 // 使用 isImagePath 静默避免 tree-shaking 警告(留给未来 v2 扩展)
 void isImagePath
-
-function baseNameOf(p: string): string {
-  const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
-  return idx >= 0 ? p.slice(idx + 1) : p
-}
