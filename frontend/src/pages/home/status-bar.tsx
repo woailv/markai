@@ -1,11 +1,26 @@
 import { PanelLeft, PanelRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { useWorkspaceStore } from "@/store"
+import { useTabStore, useWorkspaceStore } from "@/store"
 
 interface StatusBarProps {
   historyOpen: boolean
   onToggleHistory: () => void
+}
+
+/**
+ * 计算状态栏右侧显示的"当前标签页"简介。
+ * - file:显示文件绝对路径
+ * - chat:显示会话标题
+ * - template:显示模板标题
+ */
+function useActiveTabSummary(): string {
+  const activeTabId = useTabStore((s) => s.activeTabId)
+  const tabs = useTabStore((s) => s.tabs)
+  const active = tabs.find((t) => t.id === activeTabId)
+  if (!active) return ""
+  if (active.kind === "file") return active.path
+  return active.title
 }
 
 /**
@@ -17,11 +32,11 @@ interface StatusBarProps {
 export function StatusBar({ historyOpen, onToggleHistory }: StatusBarProps) {
   const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
   const setWorkspaceCollapsed = useWorkspaceStore((s) => s.setCollapsed)
-  const root = useWorkspaceStore((s) => s.root)
+  const activeSummary = useActiveTabSummary()
 
   return (
     <footer className="flex h-6 shrink-0 items-center justify-between border-t bg-muted/30 px-2 text-[11px] text-muted-foreground">
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         <ToggleButton
           active={!workspaceCollapsed}
           onClick={() => setWorkspaceCollapsed(!workspaceCollapsed)}
@@ -30,12 +45,12 @@ export function StatusBar({ historyOpen, onToggleHistory }: StatusBarProps) {
           <PanelLeft className="h-3 w-3" />
           <span>工作区</span>
         </ToggleButton>
-        {root && (
+        {activeSummary && (
           <span
-            className="ml-1 max-w-[280px] truncate text-[10.5px] opacity-70"
-            title={root}
+            className="ml-1 min-w-0 flex-1 truncate text-[10.5px] opacity-70"
+            title={activeSummary}
           >
-            {root}
+            {activeSummary}
           </span>
         )}
       </div>

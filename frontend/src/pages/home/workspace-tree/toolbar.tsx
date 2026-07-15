@@ -1,13 +1,4 @@
-import {
-  Eye,
-  EyeOff,
-  FolderCog,
-  History,
-  PanelLeftClose,
-  RefreshCw,
-  Search,
-  X,
-} from "lucide-react"
+import { FolderCog, History, RefreshCw, Search, X } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import {
@@ -25,11 +16,8 @@ import { refreshRoot } from "./use-workspace-events"
  * 切换根目录目前通过 prompt 输入路径;后续可替换为原生目录选择器。
  */
 export function WorkspaceToolbar() {
-  const showHidden = useWorkspaceStore((s) => s.showHidden)
-  const setShowHidden = useWorkspaceStore((s) => s.setShowHidden)
   const searchQuery = useWorkspaceStore((s) => s.searchQuery)
   const setSearchQuery = useWorkspaceStore((s) => s.setSearchQuery)
-  const setCollapsed = useWorkspaceStore((s) => s.setCollapsed)
   const setRoot = useWorkspaceStore((s) => s.setRoot)
   const setWatchStatus = useWorkspaceStore((s) => s.setWatchStatus)
   const root = useWorkspaceStore((s) => s.root)
@@ -125,21 +113,11 @@ export function WorkspaceToolbar() {
           >
             <History className="h-3 w-3" />
           </IconButton>
-          <IconButton
-            title={showHidden ? "隐藏点开头文件" : "显示隐藏文件"}
-            active={showHidden}
-            onClick={() => setShowHidden(!showHidden)}
-          >
-            {showHidden ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-          </IconButton>
           <IconButton title="刷新根目录" onClick={handleRefresh}>
             <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
           </IconButton>
           <IconButton title="切换根目录" onClick={handleChangeRoot}>
             <FolderCog className="h-3 w-3" />
-          </IconButton>
-          <IconButton title="收起面板" onClick={() => setCollapsed(true)}>
-            <PanelLeftClose className="h-3 w-3" />
           </IconButton>
         </div>
       </div>

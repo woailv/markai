@@ -64,29 +64,53 @@ export function RecentList({ onPick }: { onPick?: () => void } = {}) {
 
         {isEmpty && <EmptyState />}
 
-        {items.length > 0 && (
-          <ul className="py-1">
-            {items.map((item) => (
-              <RecentRow
-                key={item.id}
-                item={item}
-                onRemove={() => void remove(item.id)}
-                onPick={onPick}
-              />
-            ))}
-          </ul>
-        )}
+        {items.length > 0 && <RecentItems items={items} onRemove={remove} onPick={onPick} />}
       </div>
     </div>
   )
 }
 
+function RecentItems({
+  items,
+  onRemove,
+  onPick,
+}: {
+  items: RecentItem[]
+  onRemove: (id: number) => Promise<void>
+  onPick?: () => void
+}) {
+  const currentRoot = useWorkspaceStore((s) => s.root)
+  const normalizedRoot = normalizePath(currentRoot)
+  return (
+    <ul className="py-1">
+      {items.map((item) => (
+        <RecentRow
+          key={item.id}
+          item={item}
+          active={
+            item.kind === "dir" && normalizePath(item.path) === normalizedRoot
+          }
+          onRemove={() => void onRemove(item.id)}
+          onPick={onPick}
+        />
+      ))}
+    </ul>
+  )
+}
+
+function normalizePath(p: string): string {
+  if (!p) return ""
+  return p.replace(/[\\/]+$/, "").toLowerCase()
+}
+
 function RecentRow({
   item,
+  active,
   onRemove,
   onPick,
 }: {
   item: RecentItem
+  active: boolean
   onRemove: () => void
   onPick?: () => void
 }) {
@@ -123,15 +147,23 @@ function RecentRow({
         title={item.path}
         className={cn(
           "flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted/60",
+          active && "bg-primary/10 text-foreground hover:bg-primary/15",
         )}
       >
         {item.kind === "dir" ? (
-          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <FolderOpen
+            className={cn(
+              "h-3.5 w-3.5 shrink-0",
+              active ? "text-primary" : "text-muted-foreground",
+            )}
+          />
         ) : (
           <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium">{basename(item.path)}</div>
+          <div className={cn("truncate font-medium", active && "text-primary")}>
+            {basename(item.path)}
+          </div>
           <div className="truncate text-[10.5px] text-muted-foreground">
             {item.path}
           </div>
