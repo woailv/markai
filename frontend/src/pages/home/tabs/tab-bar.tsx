@@ -4,7 +4,6 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core"
 import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import {
@@ -98,43 +97,18 @@ export function TabBar() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   )
 
-  const [overInfo, setOverInfo] = useState<{
-    overId: string
-    before: boolean
-  } | null>(null)
-
-  const handleDragOver = (e: DragOverEvent) => {
-    const { active, over } = e
-    if (!over || active.id === over.id) {
-      setOverInfo(null)
-      return
-    }
-    // 用 delta 简单判定插入到目标前/后
-    const overRect = over.rect
-    const activeRect = e.active.rect.current.translated
-    if (!activeRect || !overRect) return
-    const activeCenter = activeRect.left + activeRect.width / 2
-    const overCenter = overRect.left + overRect.width / 2
-    setOverInfo({
-      overId: String(over.id),
-      before: activeCenter < overCenter,
-    })
-  }
-
   const handleDragEnd = (e: DragEndEvent) => {
     const { active, over } = e
-    setOverInfo(null)
     if (!over || active.id === over.id) return
-    const info = overInfo
-    // fall back:没有 info 时用 rect 判定
-    let before = true
-    if (info && info.overId === over.id) {
-      before = info.before
-    } else if (over.rect && e.active.rect.current.translated) {
-      before =
-        e.active.rect.current.translated.left + e.active.rect.current.translated.width / 2 <
-        over.rect.left + over.rect.width / 2
-    }
+    // 用 ordered 数组中的索引来判定 before/after,而不是依赖 dnd-kit
+    // 拖拽过程中已经动画移动过的 rect(那样比较中心点几乎无差,结果不稳定,
+    // 导致 store 顺序看起来"没变"→ tab 掉回原位)。
+    const srcIdx = ordered.findIndex((t) => t.id === String(active.id))
+    const dstIdx = ordered.findIndex((t) => t.id === String(over.id))
+    if (srcIdx < 0 || dstIdx < 0) return
+    
+    // 向右拖(srcIdx < dstIdx):插到 target 之后;向左拖:插到 target 之前。
+    const before = srcIdx > dstIdx
     reorderTab(String(active.id), String(over.id), before)
   }
 
@@ -157,9 +131,7 @@ export function TabBar() {
       <DndContext
         sensors={sensors}
         modifiers={[restrictToHorizontalAxis]}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
-        onDragCancel={() => setOverInfo(null)}
       >
         <SortableContext
           items={ordered.map((t) => t.id)}
