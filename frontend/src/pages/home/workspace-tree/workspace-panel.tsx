@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore, WORKSPACE_LAYOUT } from "@/store"
 
+import { RecentList } from "../recent/recent-list"
 import { ConfirmDialog } from "./confirm-dialog"
 import { WorkspaceContextMenu } from "./context-menu"
 import {
@@ -309,7 +310,7 @@ function TreeArea() {
         onMouseDown={handleBlankMouseDown}
       >
         {!hasRoot ? (
-          <EmptyRoot onChoose={handleSelectRoot} />
+          <EmptyRootWithRecent onChoose={handleSelectRoot} />
         ) : !rootAccessible ? (
           <MissingRoot reason={watchReason} onChoose={handleSelectRoot} />
         ) : (
@@ -424,6 +425,21 @@ function EmptyRoot({ onChoose }: { onChoose: () => void }) {
       >
         选择目录
       </button>
+    </div>
+  )
+}
+
+/**
+ * 未设置根目录时的视图:顶部为"选择目录"入口,下方展示最近打开列表,
+ * 方便用户直接从历史记录里恢复上一次的工作区。
+ */
+function EmptyRootWithRecent({ onChoose }: { onChoose: () => void }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <EmptyRoot onChoose={onChoose} />
+      <div className="min-h-0 flex-1 border-t">
+        <RecentList />
+      </div>
     </div>
   )
 }

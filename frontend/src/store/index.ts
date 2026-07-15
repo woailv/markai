@@ -15,3 +15,5 @@ export type { TreeNode } from "./workspace.store"
 
 export { useTabStore } from "./tab.store"
 export type { Tab, TabKind, TabStore } from "./tab.store"
+
+export { useRecentStore } from "./use-recent-store"
