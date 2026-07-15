@@ -15,6 +15,24 @@ import { refreshRoot } from "./use-workspace-events"
  * 顶部工具栏:切换根目录、手动刷新、按名称搜索过滤、显示/隐藏隐藏文件、折叠面板。
  * 切换根目录目前通过 prompt 输入路径;后续可替换为原生目录选择器。
  */
+function getBaseName(p: string): string {
+  if (!p) return "工作区"
+  // 去除尾部分隔符
+  const trimmed = p.replace(/[\\/]+$/, "")
+  if (!trimmed) return "工作区"
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"))
+  if (idx < 0) return trimmed
+  const base = trimmed.slice(idx + 1)
+  return base || trimmed
+}
+
+function isCancelError(err: unknown): boolean {
+  const msg = String(
+    (err as { message?: string })?.message ?? err ?? "",
+  ).toLowerCase()
+  return msg.includes("cancel")
+}
+
 export function WorkspaceToolbar() {
   const searchQuery = useWorkspaceStore((s) => s.searchQuery)
   const setSearchQuery = useWorkspaceStore((s) => s.setSearchQuery)
@@ -60,6 +78,11 @@ export function WorkspaceToolbar() {
       if (!res || res.canceled || !res.path) return
       picked = res.path.trim()
     } catch (err) {
+      // 用户取消选择:保留原状态,不设置错误
+      if (isCancelError(err)) {
+        console.debug("[workspace] PickDirectory canceled")
+        return
+      }
       console.error("[workspace] PickDirectory failed", err)
       setWatchStatus("error", String(err))
       return
@@ -88,8 +111,11 @@ export function WorkspaceToolbar() {
   return (
     <div className="relative shrink-0">
       <div className="flex h-9 items-center justify-between gap-1 border-b bg-muted/30 px-2">
-        <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-          工作区
+        <span
+          className="min-w-0 flex-1 truncate text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground"
+          title={root || "工作区"}
+        >
+          {getBaseName(root)}
         </span>
         <div className="flex items-center gap-0.5">
           <IconButton
