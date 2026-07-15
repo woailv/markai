@@ -120,19 +120,21 @@ export function WorkspaceContextMenu({
 
   const handleNew = (isDir: boolean) => {
     const parent = resolveCreationParent(state.targetPath)
-    if (parent && parent !== root) {
-      setExpanded(parent, true)
-    }
-    // 延迟触发，避免 ContextMenu 关闭时的焦点回退导致新建/重命名输入框瞬间失焦而被取消
+    // 延迟到菜单卸载之后再修改编辑态,避免 base-ui ContextMenu 关闭时
+    // 与 store 更新竞态导致 startCreate 被同帧覆盖 / 输入框未挂载。
     setTimeout(() => {
+      if (parent && parent !== root) {
+        setExpanded(parent, true)
+      }
       startCreate(parent, isDir)
-    }, 50)
+    }, 0)
   }
 
   const handleRename = () => {
+    const target = state.targetPath
     setTimeout(() => {
-      startRename(state.targetPath)
-    }, 50)
+      startRename(target)
+    }, 0)
   }
 
   const handleOpenInNewTab = () => {
