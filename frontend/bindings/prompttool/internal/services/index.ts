@@ -6,6 +6,7 @@ import * as DialogService from "./dialogservice.js";
 import * as FileService from "./fileservice.js";
 import * as GreetService from "./greetservice.js";
 import * as PromptTemplateService from "./prompttemplateservice.js";
+import * as RecentService from "./recentservice.js";
 import * as SnapshotService from "./snapshotservice.js";
 import * as WorkspaceService from "./workspaceservice.js";
 export {
@@ -14,6 +15,7 @@ export {
     FileService,
     GreetService,
     PromptTemplateService,
+    RecentService,
     SnapshotService,
     WorkspaceService
 };
@@ -25,6 +27,7 @@ export type {
     BeginBatchInput,
     BeginBatchResult,
     BindBatchInput,
+    ClearRecentInput,
     ConversationDetail,
     ConversationSummary,
     CreateDirectoryInput,
@@ -34,6 +37,7 @@ export type {
     FileEntry,
     GenerateTreeInput,
     GenerateTreeResult,
+    ListRecentInput,
     ListWorkspaceInput,
     MessageDTO,
     MovePathInput,
@@ -41,6 +45,8 @@ export type {
     PickDirectoryResult,
     PromptTemplate,
     ReadFileResult,
+    RecentItem,
+    RemoveRecentInput,
     RenameConversationInput,
     RenameInput,
     RenameResult,

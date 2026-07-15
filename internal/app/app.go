@@ -50,6 +50,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		&db.Message{},
 		&db.SnapshotBatch{},
 		&db.FileSnapshot{},
+		&services.RecentItem{},
 	); err != nil {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close db after migrate failure", "err", closeErr)
@@ -81,15 +82,21 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		registry.Dialog.SetApp(wailsApp)
 	}
 
+	emitter := &wailsEmitter{app: wailsApp}
+
 	// 注入事件推送能力并启动工作区监听。启动失败已在 Service 内部降级,
 	// 这里只记录日志,不阻塞应用启动。
 	if registry.Workspace != nil {
-		registry.Workspace.SetEmitter(&wailsEmitter{app: wailsApp})
+		registry.Workspace.SetEmitter(emitter)
 		if info, err := registry.Workspace.Start(); err != nil {
 			logger.Error("workspace watcher start", "err", err)
 		} else if info != nil && !info.Watching {
 			logger.Warn("workspace watcher not active", "reason", info.Reason, "degraded", info.Degraded)
 		}
+	}
+
+	if registry.Recent != nil {
+		registry.Recent.SetEmitter(emitter)
 	}
 
 	mainWin := window.NewMain(wailsApp, config.DefaultWindow())

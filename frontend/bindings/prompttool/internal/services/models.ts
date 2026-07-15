@@ -79,6 +79,13 @@ export interface BindBatchInput {
 }
 
 /**
+ * ClearRecentInput 前端调用 Clear 的入参。
+ * 当前模型不含 pinned 字段,该参数为将来预留;若为 true 目前不清空(无 pinned 概念时等同 false)。
+ */
+export interface ClearRecentInput {
+}
+
+/**
  * ConversationDetail 会话详情:包含元数据 + 消息序列。
  */
 export interface ConversationDetail {
@@ -171,6 +178,12 @@ export interface GenerateTreeResult {
 }
 
 /**
+ * ListRecentInput 前端调用 List 的入参。
+ */
+export interface ListRecentInput {
+}
+
+/**
  * ListWorkspaceInput 列出目录一层内容的入参。
  * Path 为空时使用当前根目录;非空时必须位于根目录之内。
  */
@@ -239,6 +252,27 @@ export interface ReadFileResult {
     "content": string;
     "size": number;
     "modTime": number;
+}
+
+/**
+ * RecentItem 记录用户最近打开的目录或文件。
+ */
+export interface RecentItem {
+    "id": number;
+    "path": string;
+
+    /**
+     * "dir" | "file"
+     */
+    "kind": string;
+    "openedAt": string;
+}
+
+/**
+ * RemoveRecentInput 前端调用 Remove 的入参。
+ */
+export interface RemoveRecentInput {
+    "id": number;
 }
 
 /**

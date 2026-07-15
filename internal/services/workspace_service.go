@@ -27,6 +27,7 @@ type WorkspaceService struct {
 	emitter    Emitter
 	watcher    *workspaceWatcher
 	debounceMs int
+	recent     *RecentService
 }
 
 // NewWorkspaceService 使用默认配置构造。emitter 可后续通过 SetEmitter 注入。
@@ -58,6 +59,14 @@ func NewWorkspaceService(cfg config.WorkspaceConfig) *WorkspaceService {
 func (s *WorkspaceService) SetEmitter(e Emitter) {
 	s.mu.Lock()
 	s.emitter = e
+	s.mu.Unlock()
+}
+
+// setRecent 注入 RecentService,使切换根目录时自动记录一条"最近打开"。
+// 允许传入 nil 表示不启用该联动。
+func (s *WorkspaceService) setRecent(r *RecentService) {
+	s.mu.Lock()
+	s.recent = r
 	s.mu.Unlock()
 }
 
@@ -146,9 +155,15 @@ func (s *WorkspaceService) SetRoot(in SetWorkspaceRootInput) (*WorkspaceRootInfo
 		return nil, fmt.Errorf("workspace: %q is not a directory", abs)
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.root = abs
-	return s.startLocked()
+	recent := s.recent
+	info, startErr := s.startLocked()
+	s.mu.Unlock()
+	if startErr == nil && recent != nil {
+		// 记录失败不影响主流程,仅当作降级处理。
+		_, _ = recent.Record(abs)
+	}
+	return info, startErr
 }
 
 // List 列出指定目录下一层子项。Path 为空表示根目录。

@@ -10,9 +10,17 @@ import {
   horizontalListSortingStrategy,
   SortableContext,
 } from "@dnd-kit/sortable"
-import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import type { Tab } from "@/store"
 import { useTabStore } from "@/store"
@@ -46,7 +54,6 @@ export function TabBar() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
 
   const updateScrollState = useCallback(() => {
     const el = scrollRef.current
@@ -165,34 +172,12 @@ export function TabBar() {
         </button>
       )}
       {ordered.length > 0 && (
-        <div className="relative shrink-0">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((v) => !v)}
-            className={cn(
-              "flex h-full w-7 items-center justify-center text-muted-foreground hover:bg-muted",
-              menuOpen && "bg-muted",
-            )}
-            aria-label="所有标签"
-            aria-expanded={menuOpen}
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-          {menuOpen && (
-            <AllTabsMenu
-              tabs={ordered}
-              activeTabId={activeTabId}
-              onClose={() => setMenuOpen(false)}
-              onPick={(id) => {
-                activateTab(id)
-                setMenuOpen(false)
-              }}
-              onCloseTab={(id) => {
-                void requestCloseTab(id)
-              }}
-            />
-          )}
-        </div>
+        <AllTabsMenu
+          tabs={ordered}
+          activeTabId={activeTabId}
+          onPick={activateTab}
+          onCloseTab={(id) => void requestCloseTab(id)}
+        />
       )}
     </div>
   )
@@ -201,7 +186,6 @@ export function TabBar() {
 interface AllTabsMenuProps {
   tabs: Tab[]
   activeTabId: string | null
-  onClose: () => void
   onPick: (id: string) => void
   onCloseTab: (id: string) => void
 }
@@ -209,60 +193,91 @@ interface AllTabsMenuProps {
 function AllTabsMenu({
   tabs,
   activeTabId,
-  onClose,
   onPick,
   onCloseTab,
 }: AllTabsMenuProps) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [onClose])
+  const [open, setOpen] = useState(false)
+
+  const pinned = tabs.filter((t) => t.pinned)
+  const unpinned = tabs.filter((t) => !t.pinned)
+
+  const renderItem = (t: Tab) => {
+    const isActive = t.id === activeTabId
+    return (
+      <DropdownMenuItem
+        key={t.id}
+        onSelect={(e) => {
+          e.preventDefault()
+          onPick(t.id)
+          setOpen(false)
+        }}
+        className={cn(
+          "flex items-center gap-2 pr-1",
+          isActive && "bg-accent/60",
+        )}
+      >
+        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center text-primary">
+          {isActive && <Check className="h-3.5 w-3.5" />}
+        </span>
+        <span
+          className="flex-1 truncate"
+          title={t.kind === "file" ? t.path : t.title}
+        >
+          {t.title || (t.kind === "chat" ? "新会话" : "未命名")}
+        </span>
+        {!t.pinned && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              onCloseTab(t.id)
+            }}
+            className="rounded-sm p-0.5 text-muted-foreground opacity-70 hover:bg-foreground/10 hover:opacity-100"
+            aria-label="关闭"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </DropdownMenuItem>
+    )
+  }
 
   return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div
-        role="menu"
-        className="absolute right-0 top-full z-50 mt-1 max-h-[60vh] w-72 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md"
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        className={cn(
+          "flex h-full w-7 shrink-0 items-center justify-center text-muted-foreground hover:bg-muted",
+          open && "bg-muted",
+        )}
+        aria-label="所有标签"
+      >
+        <ChevronDown className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={4}
+        className="max-h-[60vh] w-72 overflow-y-auto"
       >
         {tabs.length === 0 && (
           <div className="p-3 text-xs text-muted-foreground">没有标签</div>
         )}
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            className={cn(
-              "flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted",
-              t.id === activeTabId && "bg-muted/70",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => onPick(t.id)}
-              className="flex-1 truncate text-left"
-              title={t.kind === "file" ? t.path : t.title}
-            >
-              {t.title || (t.kind === "chat" ? "新会话" : "未命名")}
-            </button>
-            {!t.pinned && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onCloseTab(t.id)
-                }}
-                className="rounded-sm px-1 text-muted-foreground hover:bg-foreground/10"
-                aria-label="关闭"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-    </>
+        {pinned.length > 0 && (
+          <>
+            <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              固定
+            </DropdownMenuLabel>
+            {pinned.map(renderItem)}
+            {unpinned.length > 0 && <DropdownMenuSeparator />}
+          </>
+        )}
+        {unpinned.length > 0 && pinned.length > 0 && (
+          <DropdownMenuLabel className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            其他
+          </DropdownMenuLabel>
+        )}
+        {unpinned.map(renderItem)}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
