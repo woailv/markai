@@ -140,7 +140,7 @@ export default function HomePage() {
   }, [conversations, loadConversations, onConversationDeleted])
 
   return (
-    <div className="flex h-svh flex-col overflow-hidden">
+    <div className="flex h-svh flex-col overflow-hidden border-t border-border">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <WorkspacePanel />
         <div className="flex min-w-0 flex-1 flex-col">

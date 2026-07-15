@@ -25,27 +25,29 @@ export function HistorySidebar({
 }: HistorySidebarProps) {
   return (
     <div className="flex h-full w-64 shrink-0 flex-col border-l bg-muted/20">
-      <div className="flex items-center justify-between border-b px-4 py-3">
-        <span className="text-sm font-semibold">历史会话</span>
-        <div className="flex items-center gap-1">
+      <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b bg-muted/30 px-2">
+        <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+          历史会话
+        </span>
+        <div className="flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-6 w-6"
             onClick={onClearAll}
             disabled={conversations.length === 0 || !onClearAll}
             title="清空全部会话"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3 w-3" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-6 w-6"
             onClick={onNew}
             title="新建会话"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3 w-3" />
           </Button>
         </div>
       </div>

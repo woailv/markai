@@ -80,8 +80,8 @@ export function WorkspaceToolbar() {
   }, [root, setRoot, setWatchStatus])
 
   return (
-    <div className="flex flex-col gap-1 border-b bg-background px-2 py-1.5">
-      <div className="flex items-center justify-between gap-1">
+    <div className="relative shrink-0">
+      <div className="flex h-9 items-center justify-between gap-1 border-b bg-muted/30 px-2">
         <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
           工作区
         </span>
@@ -119,7 +119,7 @@ export function WorkspaceToolbar() {
       </div>
 
       {searchOpen && (
-        <div className="flex items-center gap-1 rounded border bg-background px-1.5 py-1">
+        <div className="flex items-center gap-1 border-b bg-background px-2 py-1.5">
           <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
           <input
             autoFocus
