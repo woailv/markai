@@ -66,6 +66,14 @@ export function useFileBuffer({
   const bufferRef = useRef(buffer)
   bufferRef.current = buffer
 
+  /**
+   * 自身刚保存后短时间内,workspace:changed 的 modify 事件极大概率是我们自己写盘触发的。
+   * 用一个时间戳做守卫,窗口期内忽略同路径的 modify 事件,避免二次 load() 把
+   * CodeMirror 的 value 换成新引用导致光标/滚动位置被重置。
+   */
+  const suppressSelfModifyUntilRef = useRef(0)
+  const SELF_MODIFY_SUPPRESS_MS = 1500
+
   const setDirty = useTabStore((s) => s.setDirty)
   const markFilePathInvalid = useTabStore((s) => s.markFilePathInvalid)
   const updateFilePath = useTabStore((s) => s.updateFilePath)
@@ -123,6 +131,8 @@ export function useFileBuffer({
     const cur = bufferRef.current
     if (cur.status !== "ready") return { ok: false, error: "文件未就绪" }
     try {
+      // 保存前开启自身修改守卫窗口,避免文件监听回环触发 reload
+      suppressSelfModifyUntilRef.current = Date.now() + SELF_MODIFY_SUPPRESS_MS
       const res = await FileService.Write({
         path: cur.path,
         content: cur.content,
@@ -130,6 +140,8 @@ export function useFileBuffer({
       })
       // 保存成功后 mtime 不在返回值内,重新 stat 一次
       const stat = await FileService.Read(cur.path)
+      // 关键:不覆盖 content 字段,保持编辑器 value 引用不变,防止 CodeMirror
+      // 因 value prop 变化而重建文档、丢失光标/滚动位置。
       setBuffer((b) => ({
         ...b,
         originalContent: cur.content,
@@ -139,6 +151,8 @@ export function useFileBuffer({
         externallyChanged: false,
       }))
       setDirty(tabId, false)
+      // 写盘完成,再延长一次守卫窗口(文件系统事件可能滞后到达)
+      suppressSelfModifyUntilRef.current = Date.now() + SELF_MODIFY_SUPPRESS_MS
       // res 供后续可能的 diff 展示;当前不使用。
       void res
       return { ok: true }
@@ -179,6 +193,10 @@ export function useFileBuffer({
         return
       }
       if (payload.type === "modify" && payload.entry) {
+        // 自身刚保存触发的 modify 事件:忽略,避免 load() 重置编辑器视图
+        if (Date.now() < suppressSelfModifyUntilRef.current) {
+          return
+        }
         // 若 dirty,标记为 externallyChanged 等用户决策;否则静默重载
         if (bufferRef.current.dirty) {
           setBuffer((b) => ({ ...b, externallyChanged: true }))
