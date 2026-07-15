@@ -58,45 +58,58 @@ export function HistorySidebar({
           </div>
         ) : (
           conversations.map((c) => (
-            <button
+            <div
               key={c.id}
               onClick={() => onSelect(c.id)}
               className={cn(
-                "group relative flex w-full flex-col gap-1 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50",
-                activeId === c.id ? "bg-muted font-medium" : "text-muted-foreground",
+                "group relative flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors hover:bg-muted/60",
+                activeId === c.id
+                  ? "bg-muted font-medium text-foreground"
+                  : "text-muted-foreground",
               )}
             >
-              <div className="flex items-center gap-2 truncate">
-                <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                <span className="truncate">{c.title || "新会话"}</span>
-              </div>
-              <div className="flex items-center justify-between text-[10px] opacity-70">
-                <span>{c.messageCount} 条消息</span>
-                <span>{new Date(c.updatedAt).toLocaleDateString()}</span>
-              </div>
-              <div className="absolute right-2 top-2 hidden items-center gap-1 group-hover:flex">
-                <div
-                  className="rounded bg-background/80 p-1 shadow-sm hover:bg-background"
+              <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="min-w-0 flex-1 truncate pr-10">
+                {c.title || "新会话"}
+              </span>
+              <div className="absolute right-1.5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 group-hover:flex">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
                   onClick={(e) => {
-                    e.stopPropagation();
-                    const newTitle = window.prompt('输入新标题', c.title);
-                    if (newTitle && newTitle.trim() && newTitle.trim() !== c.title) {
-                      onRename?.(c.id, newTitle.trim());
+                    e.preventDefault()
+                    e.stopPropagation()
+                    const newTitle = window.prompt("输入新标题", c.title)
+                    if (
+                      newTitle &&
+                      newTitle.trim() &&
+                      newTitle.trim() !== c.title
+                    ) {
+                      onRename?.(c.id, newTitle.trim())
                     }
                   }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   title="重命名"
                 >
                   <Pencil className="h-3 w-3" />
-                </div>
-                <div
-                  className="rounded bg-background/80 p-1 shadow-sm hover:text-destructive"
-                  onClick={(e) => onDelete(c.id, e)}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 hover:text-destructive"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onDelete(c.id, e)
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   title="删除会话"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </div>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
               </div>
-            </button>
+            </div>
           ))
         )}
       </div>
