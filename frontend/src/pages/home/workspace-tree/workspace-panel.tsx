@@ -10,7 +10,7 @@ import {
   WorkspaceService,
 } from "@/../bindings/prompttool/internal/services"
 import { cn } from "@/lib/utils"
-import { useWorkspaceStore, WORKSPACE_LAYOUT } from "@/store"
+import { useWorkspaceStore } from "@/store"
 
 import { ConfirmDialog } from "./confirm-dialog"
 import { WorkspaceContextMenu } from "./context-menu"
@@ -32,28 +32,22 @@ import {
 import { refreshRoot, useWorkspaceEvents } from "./use-workspace-events"
 
 /**
- * WorkspacePanel 工作区目录树的最外层容器。
- * - 折叠态渲染为窄条,点击展开;
- * - 展开态包含 Toolbar + 滚动的树 + 右侧可拖拽调整宽度的手柄。
+ * WorkspacePanel 工作区目录树的内容体。
+ * - 折叠态不渲染(由父级 ResizablePanelGroup 决定是否包含此面板);
+ * - 宽度调整由父级的 ResizableHandle 负责,本组件不再关心尺寸。
  */
 export function WorkspacePanel() {
   useWorkspaceEvents()
 
   const collapsed = useWorkspaceStore((s) => s.collapsed)
-  const width = useWorkspaceStore((s) => s.width)
-  const setWidth = useWorkspaceStore((s) => s.setWidth)
 
   // 折叠时完全不渲染,避免侧边占位(Zed 风格,由底部状态栏统一控制显隐)。
   if (collapsed) return null
 
   return (
-    <aside
-      className="relative flex h-full shrink-0 flex-col border-r bg-muted/10"
-      style={{ width }}
-    >
+    <aside className="relative flex h-full min-w-0 flex-1 flex-col border-r bg-muted/10">
       <WorkspaceToolbar />
       <TreeArea />
-      <ResizeHandle width={width} onWidthChange={setWidth} />
       <ToastHost />
     </aside>
   )
@@ -465,61 +459,5 @@ function RootLoading() {
       <Loader2 className="h-3 w-3 animate-spin" />
       <span>加载中…</span>
     </div>
-  )
-}
-
-/**
- * 右侧拖拽手柄:按下时全局监听 mousemove,实时更新 store 宽度。
- * 双击手柄恢复默认宽度。
- */
-function ResizeHandle({
-  width,
-  onWidthChange,
-}: {
-  width: number
-  onWidthChange: (w: number) => void
-}) {
-  const draggingRef = useRef(false)
-  const startXRef = useRef(0)
-  const startWRef = useRef(0)
-
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    draggingRef.current = true
-    startXRef.current = e.clientX
-    startWRef.current = width
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-  }
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current) return
-      const delta = e.clientX - startXRef.current
-      onWidthChange(startWRef.current + delta)
-    }
-    const onUp = () => {
-      if (!draggingRef.current) return
-      draggingRef.current = false
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-    window.addEventListener("mousemove", onMove)
-    window.addEventListener("mouseup", onUp)
-    return () => {
-      window.removeEventListener("mousemove", onMove)
-      window.removeEventListener("mouseup", onUp)
-    }
-  }, [onWidthChange])
-
-  return (
-    <div
-      onMouseDown={onMouseDown}
-      onDoubleClick={() => onWidthChange(WORKSPACE_LAYOUT.DEFAULT_WIDTH)}
-      className="absolute right-0 top-0 z-10 h-full w-1 cursor-col-resize bg-transparent hover:bg-primary/30"
-      role="separator"
-      aria-orientation="vertical"
-      title="拖拽调整宽度,双击恢复默认"
-    />
   )
 }

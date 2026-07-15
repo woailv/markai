@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { ConversationService } from "@/../bindings/prompttool/internal/services"
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
-import { useTabStore } from "@/store"
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/resizable"
+import { useTabStore, useWorkspaceStore, WORKSPACE_LAYOUT } from "@/store"
 
 import { confirmDestructive } from "./executor/confirm-dialog"
 import { HistorySidebar } from "./history-sidebar"
@@ -142,25 +147,18 @@ export default function HomePage() {
   return (
     <div className="flex h-svh flex-col overflow-hidden border-t border-border">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <WorkspacePanel />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TabBar />
-          <TabContent
-            onConversationsChanged={loadConversations}
-            onOpenHistory={() => setSidebarOpen((v) => !v)}
-          />
-        </div>
-        {sidebarOpen && (
-          <HistorySidebar
-            conversations={conversations}
-            activeId={activeConvId}
-            onSelect={handleSelectConversation}
-            onNew={handleNewConversation}
-            onDelete={handleDeleteConversation}
-            onRename={handleRenameConversation}
-            onClearAll={handleClearAllConversations}
-          />
-        )}
+        <MainSplit
+          sidebarOpen={sidebarOpen}
+          conversations={conversations}
+          activeConvId={activeConvId}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
+          onDeleteConversation={handleDeleteConversation}
+          onRenameConversation={handleRenameConversation}
+          onClearAllConversations={handleClearAllConversations}
+          onConversationsChanged={loadConversations}
+          onToggleHistory={() => setSidebarOpen((v) => !v)}
+        />
       </div>
       <StatusBar
         historyOpen={sidebarOpen}
@@ -168,4 +166,142 @@ export default function HomePage() {
       />
     </div>
   )
+}
+
+/**
+ * MainSplit 负责三栏(工作区 / 内容区 / 历史)之间的可拖拽分割。
+ * 工作区宽度以像素存于 store,这里在挂载时按当前视口换算为百分比传给 react-resizable-panels,
+ * onLayout 回写像素值,保证既能持久化又能与既有 store 兼容。
+ * 折叠工作区时,不渲染对应 Panel 和 Handle。
+ */
+function MainSplit({
+  sidebarOpen,
+  conversations,
+  activeConvId,
+  onSelectConversation,
+  onNewConversation,
+  onDeleteConversation,
+  onRenameConversation,
+  onClearAllConversations,
+  onConversationsChanged,
+  onToggleHistory,
+}: {
+  sidebarOpen: boolean
+  conversations: ConversationSummary[]
+  activeConvId: number | null
+  onSelectConversation: (id: number) => void
+  onNewConversation: () => void
+  onDeleteConversation: (id: number, e: React.MouseEvent) => void
+  onRenameConversation: (id: number, newTitle: string) => void
+  onClearAllConversations: () => void
+  onConversationsChanged: () => Promise<void> | void
+  onToggleHistory: () => void
+}) {
+  const collapsed = useWorkspaceStore((s) => s.collapsed)
+  const width = useWorkspaceStore((s) => s.width)
+  const setWidth = useWorkspaceStore((s) => s.setWidth)
+
+  // 记录容器像素宽度以便 onLayout 回写像素值。
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [containerW, setContainerW] = useState<number>(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1200,
+  )
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const update = () => setContainerW(el.getBoundingClientRect().width || 1)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // 初始工作区面板尺寸(百分比)。仅在挂载时计算一次,避免拖动过程中被 store→pct 循环回弹。
+  const initialWorkspacePct = useMemo(() => {
+    const w = typeof window !== "undefined" ? window.innerWidth : 1200
+    const px: number = width ?? 0
+    return clampPct((px / w) * 100)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const workspaceMinPct = clampPct(
+    (WORKSPACE_LAYOUT.MIN_WIDTH / Math.max(containerW, 1)) * 100,
+  )
+  const workspaceMaxPct = clampPct(
+    (WORKSPACE_LAYOUT.MAX_WIDTH / Math.max(containerW, 1)) * 100,
+  )
+
+  const mainContent = (
+    <div className="flex h-full min-w-0 flex-1 flex-col">
+      <TabBar />
+      <TabContent
+        onConversationsChanged={onConversationsChanged}
+        onOpenHistory={onToggleHistory}
+      />
+    </div>
+  )
+
+  const historyPanel = sidebarOpen ? (
+    <HistorySidebar
+      conversations={conversations}
+      activeId={activeConvId}
+      onSelect={onSelectConversation}
+      onNew={onNewConversation}
+      onDelete={onDeleteConversation}
+      onRename={onRenameConversation}
+      onClearAll={onClearAllConversations}
+    />
+  ) : null
+
+  return (
+    <div ref={containerRef} className="flex min-h-0 flex-1 overflow-hidden">
+      {collapsed ? (
+        <>
+          {mainContent}
+          {historyPanel}
+        </>
+      ) : (
+        <>
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="flex min-h-0 min-w-0 flex-1"
+          >
+            <ResizablePanel
+              defaultSize={initialWorkspacePct}
+              minSize={workspaceMinPct}
+              maxSize={workspaceMaxPct}
+              onResize={(pct) => {
+                if (containerW <= 0) return
+                const numPct = pct as unknown as number
+                const px = Math.round((numPct / 100) * containerW)
+                if (Math.abs(px - width) >= 1) setWidth(px)
+              }}
+              className="flex min-w-0"
+            >
+              <WorkspacePanel />
+            </ResizablePanel>
+            <ResizableHandle
+              withHandle
+              className="w-px bg-border hover:bg-primary/30"
+            />
+            <ResizablePanel
+              defaultSize={100 - initialWorkspacePct}
+              minSize={20}
+              className="flex min-w-0"
+            >
+              {mainContent}
+            </ResizablePanel>
+          </ResizablePanelGroup>
+          {historyPanel}
+        </>
+      )}
+    </div>
+  )
+}
+
+function clampPct(v: number): number {
+  if (!Number.isFinite(v)) return 20
+  if (v < 5) return 5
+  if (v > 80) return 80
+  return v
 }
