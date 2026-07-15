@@ -7,6 +7,7 @@ import { useTabStore } from "@/store"
 import { FilePanel } from "../file-panel"
 import { ChatTabView } from "./chat-tab-view"
 import { CloseConfirmDialogHost } from "./close-confirm-dialog"
+import { TemplateTabView } from "./template-tab-view"
 import { useTabShortcuts } from "./use-tab-shortcuts"
 
 interface TabContentProps {
@@ -74,6 +75,11 @@ export function TabContent({
                 tabId={tab.id}
                 path={tab.path}
                 invalid={tab.invalid}
+              />
+            ) : tab.kind === "template" ? (
+              <TemplateTabView
+                tabId={tab.id}
+                templateId={tab.templateId}
               />
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

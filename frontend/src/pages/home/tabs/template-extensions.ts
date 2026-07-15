@@ -1,4 +1,14 @@
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language"
+/**
+ * 模板编辑器的 CodeMirror 附加扩展。
+ *
+ * 从原 `template-editor/blocks/cm-extensions.ts` 迁入,随模板编辑器一同
+ * 收敛到主页 tab 内;不再依赖已删除的 template-editor 目录。
+ *
+ * 提供两类语法高亮:
+ *  - {{var}} 变量占位符
+ *  - @foo.txt / ../a/b.txt / C:\path\file.ext 之类的路径引用
+ */
+import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { RangeSetBuilder } from "@codemirror/state"
 import {
   Decoration,
@@ -63,7 +73,7 @@ const theme = EditorView.theme({
   ".cm-content": {
     fontFamily:
       "ui-monospace, SFMono-Regular, Menlo, 'JetBrains Mono', monospace",
-    padding: "6px 4px",
+    padding: "8px 6px",
     caretColor: "hsl(var(--primary))",
   },
   ".cm-gutters": { backgroundColor: "transparent", border: "none" },
@@ -90,7 +100,7 @@ const theme = EditorView.theme({
   ".cm-placeholder": { color: "hsl(var(--muted-foreground))", opacity: "0.5" },
 })
 
-export const promptExtensions = [
+export const templateExtensions = [
   highlightPlugin,
   theme,
   syntaxHighlighting(defaultHighlightStyle),

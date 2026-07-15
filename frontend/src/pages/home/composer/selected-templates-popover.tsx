@@ -7,7 +7,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import { blockSummary } from "@/pages/template-editor/blocks/variable-utils"
 
 import { buildTemplatePreview } from "../utils"
 import type { Template } from "../types"
@@ -104,7 +103,7 @@ function TemplateCard({
           {tpl.title || "未命名"}
         </span>
         <span className="shrink-0 text-[10px] text-muted-foreground">
-          {preview.blocks.length}块 · {preview.chars}字
+          {preview.chars}字
         </span>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <button
@@ -126,30 +125,19 @@ function TemplateCard({
         </div>
       </div>
       {expanded && (
-        <ol className="space-y-1 border-t bg-muted/20 px-2 py-1.5">
-          {preview.blocks.map((b, i) => {
-            const summary = blockSummary(b.content) || "空块"
-            const isEmpty = !b.content.trim()
-            return (
-              <li key={b.id} className="flex items-start gap-1.5">
-                <span className="mt-0.5 shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                  {i + 1}.
-                </span>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-[11px]",
-                    isEmpty
-                      ? "italic text-muted-foreground/60"
-                      : "text-foreground/85",
-                  )}
-                  title={summary}
-                >
-                  {summary}
-                </span>
-              </li>
-            )
-          })}
-        </ol>
+        <div className="border-t bg-muted/20 px-2 py-1.5">
+          <div
+            className={cn(
+              "text-[11px] line-clamp-3 whitespace-pre-wrap",
+              !preview.plain.trim()
+                ? "italic text-muted-foreground/60"
+                : "text-foreground/85",
+            )}
+            title={preview.summary}
+          >
+            {preview.plain.trim() || "空内容"}
+          </div>
+        </div>
       )}
     </div>
   )

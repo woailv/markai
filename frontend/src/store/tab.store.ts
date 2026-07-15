@@ -47,6 +47,18 @@ export interface TabStore {
   /** 显式打开一个空的新会话 tab(总是新建,不复用)。 */
   openNewChatTab: () => string
 
+  /** 打开(或激活已存在的)模板 tab。templateId=null 表示未落库的新模板 tab。 */
+  openTemplateTab: (templateId: number | null, title?: string) => string
+  /** 显式打开一个空的新模板 tab(复用已存在的未绑定 tab,避免重复)。 */
+  openNewTemplateTab: () => string
+  /**
+   * 将一个未绑定 templateId 的模板 tab 绑定到真实的 templateId。
+   * 若目标 templateId 已被其他模板 tab 占用,会合并到那个 tab 并关闭当前 tab。
+   */
+  bindTemplate: (tabId: string, templateId: number) => void
+  /** 当模板在别处被删除时,清理相关 tab。 */
+  onTemplateDeleted: (templateId: number) => void
+
   /**
    * 打开文件为正式 tab。若该路径已有 tab(无论预览/正式),激活并升级为正式。
    * 若当前存在预览 tab 且该预览 tab 未被显式固化,则复用预览 tab 的槽位。
@@ -114,6 +126,11 @@ function findChatTabByConvId(tabs: Tab[], convId: number): Tab | undefined {
   return tabs.find(
     (t) => t.kind === "chat" && t.conversationId === convId,
   )
+}
+
+/** 找出 templateId 已绑定的 template tab(如果存在)。 */
+function findTemplateTabById(tabs: Tab[], tplId: number): Tab | undefined {
+  return tabs.find((t) => t.kind === "template" && t.templateId === tplId)
 }
 
 /** 找到指定路径的 file tab(不区分 preview/正式)。 */
@@ -206,6 +223,99 @@ export const useTabStore = create<TabStore>()(
       }
     })
     return resultId
+  },
+
+  openTemplateTab: (templateId, title = "新模板") => {
+    let resultId = ""
+    set((state) => {
+      if (templateId !== null) {
+        const existing = findTemplateTabById(state.tabs, templateId)
+        if (existing) {
+          resultId = existing.id
+          return state.activeTabId === existing.id
+            ? state
+            : { activeTabId: existing.id }
+        }
+      }
+      const id = genId()
+      resultId = id
+      const newTab: Tab = {
+        kind: "template",
+        id,
+        templateId,
+        title,
+      }
+      return {
+        tabs: [...state.tabs, newTab],
+        activeTabId: id,
+      }
+    })
+    return resultId
+  },
+
+  openNewTemplateTab: () => {
+    let resultId = ""
+    set((state) => {
+      const existingNew = state.tabs.find(
+        (t) => t.kind === "template" && t.templateId === null,
+      )
+      if (existingNew) {
+        resultId = existingNew.id
+        return state.activeTabId === existingNew.id
+          ? state
+          : { activeTabId: existingNew.id }
+      }
+      const id = genId()
+      resultId = id
+      return {
+        tabs: [
+          ...state.tabs,
+          { kind: "template", id, templateId: null, title: "新模板" },
+        ],
+        activeTabId: id,
+      }
+    })
+    return resultId
+  },
+
+  bindTemplate: (tabId, templateId) => {
+    set((state) => {
+      const current = state.tabs.find((t) => t.id === tabId)
+      if (!current || current.kind !== "template") return state
+      const dup = state.tabs.find(
+        (t) =>
+          t.kind === "template" &&
+          t.id !== tabId &&
+          t.templateId === templateId,
+      )
+      if (dup) {
+        return {
+          tabs: state.tabs.filter((t) => t.id !== tabId),
+          activeTabId: dup.id,
+        }
+      }
+      return {
+        tabs: state.tabs.map((t) =>
+          t.id === tabId && t.kind === "template"
+            ? { ...t, templateId }
+            : t,
+        ),
+      }
+    })
+  },
+
+  onTemplateDeleted: (templateId) => {
+    set((state) => {
+      let changed = false
+      const nextTabs = state.tabs.map((t) => {
+        if (t.kind === "template" && t.templateId === templateId) {
+          changed = true
+          return { ...t, templateId: null, title: "新模板", dirty: false }
+        }
+        return t
+      })
+      return changed ? { tabs: nextTabs } : state
+    })
   },
 
   openFile: (path, title) => {

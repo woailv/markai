@@ -1,18 +1,17 @@
-import { PanelLeft, PanelRight } from "lucide-react"
+import { FileCode2, PanelLeft, PanelRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { useTabStore, useWorkspaceStore } from "@/store"
-
-interface StatusBarProps {
-  historyOpen: boolean
-  onToggleHistory: () => void
-}
+import {
+  useRightPanelStore,
+  useTabStore,
+  useWorkspaceStore,
+  type RightPanelKind,
+} from "@/store"
 
 /**
  * 计算状态栏右侧显示的"当前标签页"简介。
  * - file:显示文件绝对路径
- * - chat:显示会话标题
- * - template:显示模板标题
+ * - chat / template:显示标题
  */
 function useActiveTabSummary(): string {
   const activeTabId = useTabStore((s) => s.activeTabId)
@@ -26,12 +25,14 @@ function useActiveTabSummary(): string {
 /**
  * 页面底部状态/工具条。
  * - 左侧:切换工作区目录树显示
- * - 右侧:切换历史会话侧边栏显示
- * 参考 Zed 布局:两侧面板收起后由该条统一控制,不再占用侧边纵向空间。
+ * - 右侧:模板 / 历史 两个互斥按钮,共同控制主页右侧面板显示的内容
+ *   参考 Zed:同一位置替换内容,同一时刻至多一个面板可见。
  */
-export function StatusBar({ historyOpen, onToggleHistory }: StatusBarProps) {
+export function StatusBar() {
   const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
   const setWorkspaceCollapsed = useWorkspaceStore((s) => s.setCollapsed)
+  const panel = useRightPanelStore((s) => s.panel)
+  const togglePanel = useRightPanelStore((s) => s.toggle)
   const activeSummary = useActiveTabSummary()
 
   return (
@@ -56,16 +57,50 @@ export function StatusBar({ historyOpen, onToggleHistory }: StatusBarProps) {
       </div>
 
       <div className="flex items-center gap-1">
-        <ToggleButton
-          active={historyOpen}
-          onClick={onToggleHistory}
-          title={historyOpen ? "隐藏历史会话" : "显示历史会话"}
-        >
-          <span>历史</span>
-          <PanelRight className="h-3 w-3" />
-        </ToggleButton>
+        <RightPanelButton
+          kind="template"
+          activePanel={panel}
+          onToggle={togglePanel}
+          label="模板"
+          icon={<FileCode2 className="h-3 w-3" />}
+        />
+        <RightPanelButton
+          kind="history"
+          activePanel={panel}
+          onToggle={togglePanel}
+          label="历史"
+          icon={<PanelRight className="h-3 w-3" />}
+        />
       </div>
     </footer>
+  )
+}
+
+interface RightPanelButtonProps {
+  kind: RightPanelKind
+  activePanel: RightPanelKind | null
+  onToggle: (kind: RightPanelKind) => void
+  label: string
+  icon: React.ReactNode
+}
+
+function RightPanelButton({
+  kind,
+  activePanel,
+  onToggle,
+  label,
+  icon,
+}: RightPanelButtonProps) {
+  const active = activePanel === kind
+  return (
+    <ToggleButton
+      active={active}
+      onClick={() => onToggle(kind)}
+      title={active ? `隐藏${label}` : `显示${label}`}
+    >
+      <span>{label}</span>
+      {icon}
+    </ToggleButton>
   )
 }
 

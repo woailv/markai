@@ -2,7 +2,6 @@ import { useCallback, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 
 import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
-import { buildTemplateEditPath, ROUTE_PATHS } from "@/router/paths"
 import { useTabStore } from "@/store"
 
 import { ChatPanel } from "../chat-panel"
@@ -70,12 +69,10 @@ export function ChatTabView({
   )
 
   const handleCreateTemplate = useCallback(() => {
-    navigate(ROUTE_PATHS.TEMPLATE_NEW)
   }, [navigate])
 
   const handleEditTemplate = useCallback(
     (id: number) => {
-      navigate(buildTemplateEditPath(id))
     },
     [navigate],
   )

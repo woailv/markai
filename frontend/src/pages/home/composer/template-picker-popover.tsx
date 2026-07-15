@@ -143,7 +143,7 @@ export function TemplatePickerPopover({
                           {tpl.title || "未命名"}
                         </span>
                         <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {preview.blocks.length}块
+                          {preview.chars}字
                         </span>
                       </button>
                       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
