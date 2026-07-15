@@ -93,6 +93,17 @@ export interface TabStore {
   bindConversation: (tabId: string, conversationId: number) => void
   /** 当会话在别处被删除时,清理相关 tab(其 conversationId 变为 null,标题回退)。 */
   onConversationDeleted: (conversationId: number) => void
+
+  /**
+   * 拖拽重排:把 sourceId 移到 targetId 之前(before=true)或之后(before=false)。
+   * pinned/unpinned 分区独立:不能把非固定 tab 拖到固定区,反之亦然。
+   */
+  reorderTab: (sourceId: string, targetId: string, before: boolean) => void
+
+  /** 激活相对当前 activeTab 的偏移 tab(Ctrl+Tab / Ctrl+Shift+Tab)。 */
+  activateRelative: (offset: number) => void
+  /** 激活序号第 index 个 tab(1-based,Ctrl+1..8);Ctrl+9 => 最后一个,传 -1。 */
+  activateByIndex: (index: number) => void
 }
 
 const genId = () =>
@@ -461,6 +472,46 @@ export const useTabStore = create<TabStore>()(
         return t
       })
       return changed ? { tabs: nextTabs } : state
+    })
+  },
+
+  reorderTab: (sourceId, targetId, before) => {
+    set((state) => {
+      if (sourceId === targetId) return state
+      const src = state.tabs.find((t) => t.id === sourceId)
+      const dst = state.tabs.find((t) => t.id === targetId)
+      if (!src || !dst) return state
+      // pinned 与非 pinned 属于两个区,不允许跨区拖拽(避免语义混乱)
+      if (!!src.pinned !== !!dst.pinned) return state
+      const without = state.tabs.filter((t) => t.id !== sourceId)
+      const dstIdx = without.findIndex((t) => t.id === targetId)
+      if (dstIdx < 0) return state
+      const insertAt = before ? dstIdx : dstIdx + 1
+      const next = [...without.slice(0, insertAt), src, ...without.slice(insertAt)]
+      return { tabs: next }
+    })
+  },
+
+  activateRelative: (offset) => {
+    set((state) => {
+      if (state.tabs.length === 0) return state
+      const curIdx = state.tabs.findIndex((t) => t.id === state.activeTabId)
+      const base = curIdx < 0 ? 0 : curIdx
+      const n = state.tabs.length
+      const nextIdx = ((base + offset) % n + n) % n
+      const nextId = state.tabs[nextIdx].id
+      return nextId === state.activeTabId ? state : { activeTabId: nextId }
+    })
+  },
+
+  activateByIndex: (index) => {
+    set((state) => {
+      if (state.tabs.length === 0) return state
+      // -1 表示最后一个(Ctrl+9)
+      const idx = index === -1 ? state.tabs.length - 1 : index
+      if (idx < 0 || idx >= state.tabs.length) return state
+      const nextId = state.tabs[idx].id
+      return nextId === state.activeTabId ? state : { activeTabId: nextId }
     })
   },
     }),

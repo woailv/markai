@@ -1,3 +1,5 @@
+import { useSortable } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import {
   AlertTriangle,
   FileCode2,
@@ -12,11 +14,40 @@ import { cn } from "@/lib/utils"
 import type { Tab } from "@/store"
 import { useTabStore } from "@/store"
 
+import { requestCloseTabs } from "./close-coordinator"
+
 interface TabItemProps {
   tab: Tab
   active: boolean
   onActivate: (id: string) => void
   onClose: (id: string) => void
+}
+
+/**
+ * 供 TabBar 用 dnd-kit 包一层的 sortable 版本;
+ * 保留原 TabItem 作为纯展示组件,便于在非拖拽场景(如"所有标签"菜单)复用。
+ */
+export function SortableTabItem(props: TabItemProps) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.tab.id })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TabItem {...props} />
+    </div>
+  )
 }
 
 function iconFor(tab: Tab) {
@@ -36,9 +67,20 @@ export function TabItem({ tab, active, onActivate, onClose }: TabItemProps) {
 
   const togglePin = useTabStore((s) => s.togglePin)
   const promoteToPermanent = useTabStore((s) => s.promoteToPermanent)
-  const closeOthers = useTabStore((s) => s.closeOthers)
-  const closeToRight = useTabStore((s) => s.closeToRight)
-  const closeAll = useTabStore((s) => s.closeAll)
+
+  /** 关闭"其他 / 右侧 / 全部"时,统一走 dirty 询问流程。 */
+  const collectTargets = (mode: "others" | "right" | "all"): string[] => {
+    const all = useTabStore.getState().tabs
+    if (mode === "others") {
+      return all.filter((t) => t.id !== tab.id && !t.pinned).map((t) => t.id)
+    }
+    if (mode === "right") {
+      const idx = all.findIndex((t) => t.id === tab.id)
+      if (idx < 0) return []
+      return all.slice(idx + 1).filter((t) => !t.pinned).map((t) => t.id)
+    }
+    return all.filter((t) => !t.pinned).map((t) => t.id)
+  }
 
   const handleMouseDown = (e: MouseEvent) => {
     if (e.button === 1) {
@@ -75,6 +117,7 @@ export function TabItem({ tab, active, onActivate, onClose }: TabItemProps) {
       <div
         role="tab"
         aria-selected={active}
+        data-tab-id={tab.id}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
@@ -143,15 +186,15 @@ export function TabItem({ tab, active, onActivate, onClose }: TabItemProps) {
           }}
           onCloseOthers={() => {
             closeMenu()
-            closeOthers(tab.id)
+            void requestCloseTabs(collectTargets("others"))
           }}
           onCloseRight={() => {
             closeMenu()
-            closeToRight(tab.id)
+            void requestCloseTabs(collectTargets("right"))
           }}
           onCloseAll={() => {
             closeMenu()
-            closeAll()
+            void requestCloseTabs(collectTargets("all"))
           }}
           onTogglePin={() => {
             closeMenu()

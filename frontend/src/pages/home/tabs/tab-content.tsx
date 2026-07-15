@@ -6,6 +6,8 @@ import { useTabStore } from "@/store"
 
 import { FilePanel } from "../file-panel"
 import { ChatTabView } from "./chat-tab-view"
+import { CloseConfirmDialogHost } from "./close-confirm-dialog"
+import { useTabShortcuts } from "./use-tab-shortcuts"
 
 interface TabContentProps {
   /** 底部子组件用来刷新历史侧边栏。 */
@@ -27,15 +29,20 @@ export function TabContent({
   const activeTabId = useTabStore((s) => s.activeTabId)
   const openNewChatTab = useTabStore((s) => s.openNewChatTab)
 
+  useTabShortcuts()
+
   if (tabs.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-        <MessagesSquare className="h-8 w-8 opacity-60" />
-        <div>暂无打开的标签</div>
-        <Button size="sm" variant="outline" onClick={() => openNewChatTab()}>
-          新建会话
-        </Button>
-      </div>
+      <>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+          <MessagesSquare className="h-8 w-8 opacity-60" />
+          <div>暂无打开的标签</div>
+          <Button size="sm" variant="outline" onClick={() => openNewChatTab()}>
+            新建会话
+          </Button>
+        </div>
+        <CloseConfirmDialogHost />
+      </>
     )
   }
 
@@ -76,6 +83,7 @@ export function TabContent({
           </div>
         )
       })}
+      <CloseConfirmDialogHost />
     </div>
   )
 }
