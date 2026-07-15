@@ -23,6 +23,7 @@ import {
   invertedTheme,
   readOnlyExtensions,
   readonlyBaseTheme,
+  smartNewlineKeymap,
 } from "./extensions"
 import { createFileChipPlugin, type FileChipVariant } from "./file-chip"
 import { encodeFileToken } from "./file-path-utils"
@@ -184,6 +185,10 @@ export function RichEditor({
     // 否则会吞掉 Enter,破坏模板块等仅需换行的编辑体验。
     if (mode === "editable" && onSubmit) {
       exts.push(buildSubmitKeymap(submitRef))
+    } else if (mode === "editable") {
+      // 无 onSubmit 的编辑场景(如模板块):Enter 走智能换行,
+      // 与上一行的缩进/列表标记对齐。
+      exts.push(smartNewlineKeymap)
     }
 
     // 变更回调
