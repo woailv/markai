@@ -54,12 +54,6 @@ export function ChatTabView({
   // 简化起见,这里不主动设置标题,依赖 HomePage 层同步。
 
   const handleClear = useCallback(async () => {
-    const ok = await confirmDestructive({
-      title: "清空当前会话",
-      description: "将删除该会话中的所有消息记录,确定继续?",
-      destructiveLabel: "清空",
-    })
-    if (!ok) return
     await clearMessages()
   }, [clearMessages])
 
