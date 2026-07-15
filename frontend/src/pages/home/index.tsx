@@ -6,6 +6,7 @@ import { useTabStore } from "@/store"
 
 import { confirmDestructive } from "./executor/confirm-dialog"
 import { HistorySidebar } from "./history-sidebar"
+import { StatusBar } from "./status-bar"
 import { TabBar } from "./tabs/tab-bar"
 import { TabContent } from "./tabs/tab-content"
 import { WorkspacePanel } from "./workspace-tree"
@@ -139,26 +140,32 @@ export default function HomePage() {
   }, [conversations, loadConversations, onConversationDeleted])
 
   return (
-    <div className="flex h-svh overflow-hidden">
-      <WorkspacePanel />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <TabBar />
-        <TabContent
-          onConversationsChanged={loadConversations}
-          onOpenHistory={() => setSidebarOpen((v) => !v)}
-        />
+    <div className="flex h-svh flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <WorkspacePanel />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TabBar />
+          <TabContent
+            onConversationsChanged={loadConversations}
+            onOpenHistory={() => setSidebarOpen((v) => !v)}
+          />
+        </div>
+        {sidebarOpen && (
+          <HistorySidebar
+            conversations={conversations}
+            activeId={activeConvId}
+            onSelect={handleSelectConversation}
+            onNew={handleNewConversation}
+            onDelete={handleDeleteConversation}
+            onRename={handleRenameConversation}
+            onClearAll={handleClearAllConversations}
+          />
+        )}
       </div>
-      {sidebarOpen && (
-        <HistorySidebar
-          conversations={conversations}
-          activeId={activeConvId}
-          onSelect={handleSelectConversation}
-          onNew={handleNewConversation}
-          onDelete={handleDeleteConversation}
-          onRename={handleRenameConversation}
-          onClearAll={handleClearAllConversations}
-        />
-      )}
+      <StatusBar
+        historyOpen={sidebarOpen}
+        onToggleHistory={() => setSidebarOpen((v) => !v)}
+      />
     </div>
   )
 }

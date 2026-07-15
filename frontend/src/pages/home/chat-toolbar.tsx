@@ -1,4 +1,4 @@
-import { Check, Copy, History, Loader2, Trash2 } from "lucide-react"
+import { Check, Copy, Loader2, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import type { ChatMessage, Template } from "./types"
 interface ChatToolbarProps {
   messages: ChatMessage[]
   onClear: () => void
+  /** @deprecated 历史会话切换已迁移到页面底部状态栏,此 prop 保留以兼容旧调用。 */
   onOpenHistory?: () => void
   templates: Template[]
 }
@@ -27,7 +28,6 @@ interface ChatToolbarProps {
 export function ChatToolbar({
   messages,
   onClear,
-  onOpenHistory,
   templates,
 }: ChatToolbarProps) {
   const [copied, setCopied] = useState(false)
@@ -137,15 +137,6 @@ export function ChatToolbar({
         disabled={!hasMessages}
       >
         <Trash2 className="h-3.5 w-3.5 text-destructive" />
-      </IconButton>
-
-      {/* 历史会话 */}
-      <IconButton
-        title="历史会话"
-        onClick={onOpenHistory}
-        disabled={!onOpenHistory}
-      >
-        <History className="h-3.5 w-3.5" />
       </IconButton>
 
       {/* 清空确认弹窗 */}

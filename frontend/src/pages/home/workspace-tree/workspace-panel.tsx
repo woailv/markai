@@ -3,7 +3,6 @@ import {
   FilePlus,
   FolderPlus,
   Loader2,
-  PanelLeftOpen,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
@@ -44,26 +43,10 @@ export function WorkspacePanel() {
 
   const collapsed = useWorkspaceStore((s) => s.collapsed)
   const width = useWorkspaceStore((s) => s.width)
-  const setCollapsed = useWorkspaceStore((s) => s.setCollapsed)
   const setWidth = useWorkspaceStore((s) => s.setWidth)
 
-  if (collapsed) {
-    return (
-      <aside
-        className="flex h-full shrink-0 flex-col items-center border-r bg-muted/20 py-2"
-        style={{ width: WORKSPACE_LAYOUT.COLLAPSED_WIDTH }}
-      >
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          title="展开工作区目录树"
-          className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <PanelLeftOpen className="h-4 w-4" />
-        </button>
-      </aside>
-    )
-  }
+  // 折叠时完全不渲染,避免侧边占位(Zed 风格,由底部状态栏统一控制显隐)。
+  if (collapsed) return null
 
   return (
     <aside
