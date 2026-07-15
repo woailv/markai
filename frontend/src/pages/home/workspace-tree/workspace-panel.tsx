@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  FilePlus,
   FolderPlus,
   Loader2,
 } from "lucide-react"
@@ -17,7 +16,6 @@ import { ConfirmDialog } from "./confirm-dialog"
 import { WorkspaceContextMenu } from "./context-menu"
 import {
   deletePaths,
-  resolveCreationParent,
   siblingNamesOf,
 } from "./file-ops"
 import { InlineNameEditor } from "./inline-name-editor"
@@ -81,10 +79,8 @@ function TreeArea() {
   const [deleting, setDeleting] = useState(false)
   const editing = useEditingStore((s) => s.editing)
   const clearEditing = useEditingStore((s) => s.clear)
-  const startCreate = useEditingStore((s) => s.startCreate)
   const selectedPath = useWorkspaceStore((s) => s.selectedPath)
   const selectedPaths = useWorkspaceStore((s) => s.selectedPaths)
-  const setExpanded = useWorkspaceStore((s) => s.setExpanded)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   const query = searchQuery.trim().toLowerCase()
@@ -133,19 +129,6 @@ function TreeArea() {
       setMenu({ x: e.clientX, y: e.clientY, targetPath: path, isDir })
     },
     [],
-  )
-
-  /**
-   * 触发新建。工具栏路径:根据当前选中项定位父目录;若无选中则退回根。
-   * 会自动展开父目录,让内联输入框可见。
-   */
-  const handleToolbarCreate = useCallback(
-    (isDir: boolean) => {
-      const parent = resolveCreationParent(selectedPath)
-      if (parent && parent !== root) setExpanded(parent, true)
-      startCreate(parent, isDir)
-    },
-    [root, selectedPath, setExpanded, startCreate],
   )
 
   /**
