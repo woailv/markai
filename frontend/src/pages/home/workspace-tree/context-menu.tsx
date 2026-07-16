@@ -80,6 +80,10 @@ export function WorkspaceContextMenu({
   }, [onClose])
 
   const handleInsertToInput = () => {
+    if (!targets.length) return
+    // 与拖拽路径保持一致:统一通过 files:dropped 事件交由接收方
+    // (RichEditor 家族)按其内置的 markdown 文件引用格式插入,
+    // 避免右键与拖拽产生两种不同的输出格式。
     emitFilesDropped(targets)
   }
 
@@ -168,33 +172,8 @@ export function WorkspaceContextMenu({
 
       const wrapped = `\n\`\`\`text\n${treeText}\n\`\`\`\n`
 
-      const active = document.activeElement as HTMLElement | null
-      let editable: HTMLElement | null = null
-
-      if (active && active.isContentEditable) {
-        editable = active
-      } else {
-        const nodes = Array.from(
-          document.querySelectorAll<HTMLElement>(
-            '[data-file-drop-target="true"]',
-          ),
-        )
-        for (const t of nodes) {
-          const ce = t.querySelector<HTMLElement>('[contenteditable="true"]')
-          if (ce) {
-            editable = ce
-            break
-          }
-        }
-      }
-
-      if (editable) {
-        editable.focus()
-        const ok = document.execCommand("insertText", false, wrapped)
-        if (!ok) {
-          await navigator.clipboard.writeText(wrapped)
-        }
-      } else {
+      const inserted = insertTextIntoActiveEditor(wrapped)
+      if (!inserted) {
         await navigator.clipboard.writeText(wrapped)
       }
     } catch {
@@ -284,6 +263,39 @@ export function WorkspaceContextMenu({
       </ContextMenuContent>
     </ContextMenu>
   )
+}
+
+/**
+ * 定位当前可插入的富文本编辑器并写入纯文本(用于目录树代码块等非文件引用场景)。
+ * 优先使用聚焦的 contenteditable;否则回退到页面上首个 file-drop 目标
+ * 内的 contenteditable。返回是否成功插入。
+ *
+ * 注意:文件引用的插入不要走这里,应通过 emitFilesDropped 让接收方
+ * 按统一的 markdown 文件引用格式处理,以与拖拽路径保持一致。
+ */
+function insertTextIntoActiveEditor(text: string): boolean {
+  const active = document.activeElement as HTMLElement | null
+  let editable: HTMLElement | null = null
+
+  if (active && active.isContentEditable) {
+    editable = active
+  } else {
+    const dropTargets = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+    )
+    for (const t of dropTargets) {
+      const ce = t.querySelector<HTMLElement>('[contenteditable="true"]')
+      if (ce) {
+        editable = ce
+        break
+      }
+    }
+  }
+
+  if (!editable) return false
+  editable.focus()
+  const ok = document.execCommand("insertText", false, text)
+  return ok
 }
 
 function makeRect(x: number, y: number): DOMRect {
