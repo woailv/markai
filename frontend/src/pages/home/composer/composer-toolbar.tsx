@@ -75,11 +75,6 @@ export function ComposerToolbar({
         </SelectedTemplatesPopover>
       )}
 
-      {/* 拖拽提示 */}
-      <span className="ml-1 text-[10px] text-muted-foreground/70">
-        {isDragOver ? "松开以插入文件路径" : "支持拖入文件"}
-      </span>
-
       {/* 右侧发送 */}
       <div className="ml-auto">
         <Button
