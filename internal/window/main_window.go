@@ -15,10 +15,11 @@ import (
 // 必须在容器上加该 data 属性,否则事件不会触发。
 func NewMain(app *application.App, cfg config.WindowConfig) *application.WebviewWindow {
 	return app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:          cfg.Title,
-		Width:          cfg.Width,
-		Height:         cfg.Height,
-		EnableFileDrop: true,
+		DevToolsEnabled: true,
+		Title:           cfg.Title,
+		Width:           cfg.Width,
+		Height:          cfg.Height,
+		EnableFileDrop:  true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
