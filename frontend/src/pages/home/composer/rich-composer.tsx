@@ -13,7 +13,7 @@ import {
   documentToPlainText,
 } from "@/components/rich-editor"
 import { cn } from "@/lib/utils"
-import { useDraftStore } from "@/store"
+import { useComposeSettingsStore, useDraftStore } from "@/store"
 
 import { ComposerToolbar } from "./composer-toolbar"
 import type { Template } from "../types"
@@ -64,6 +64,15 @@ export function RichComposer({
     const plain = (typeof res === "string" ? res : String(res ?? "")).trim()
     if (!plain) return
     onSend(plain)
+
+    // 根据用户设置,发送后可选地写入剪贴板
+    if (useComposeSettingsStore.getState().copyAfterSend) {
+      // navigator.clipboard 可能因权限/环境失败,静默降级不影响主流程
+      void navigator.clipboard?.writeText(plain).catch(() => {
+        /* 忽略剪贴板写入失败 */
+      })
+    }
+
     setDoc("")
     clearDraft()
   }, [doc, onSend, clearDraft])

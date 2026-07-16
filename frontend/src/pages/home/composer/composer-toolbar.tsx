@@ -1,8 +1,18 @@
-import { BookMarked, Send } from "lucide-react"
+import { BookMarked, Send, Settings2 } from "lucide-react"
 import { useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { useComposeSettingsStore } from "@/store"
 
 import type { Template } from "../types"
 import { SelectedTemplateTags } from "./selected-template-tags"
@@ -41,6 +51,11 @@ export function ComposerToolbar({
     return result
   }, [templates, selectedIds])
 
+  const copyAfterSend = useComposeSettingsStore((s) => s.copyAfterSend)
+  const toggleCopyAfterSend = useComposeSettingsStore(
+    (s) => s.toggleCopyAfterSend,
+  )
+
   return (
     <div className="flex items-center gap-1.5">
       {/* 📚 模板选择器 */}
@@ -72,8 +87,7 @@ export function ComposerToolbar({
         onRemove={onToggleTemplate}
       />
 
-      {/* 右侧发送 */}
-      <div className="ml-auto shrink-0">
+      <div className="ml-auto flex shrink-0 items-center gap-1">
         <Button
           type="button"
           size="sm"
@@ -84,6 +98,32 @@ export function ComposerToolbar({
           <Send className="h-3 w-3" />
           发送
         </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            title="发送设置"
+            className={cn(
+              "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
+              "hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-xs">发送设置</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuCheckboxItem
+                checked={copyAfterSend}
+                onCheckedChange={toggleCopyAfterSend}
+                onSelect={(e) => e.preventDefault()}
+                className="text-xs"
+              >
+                发送后复制到剪贴板
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )

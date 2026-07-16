@@ -23,3 +23,5 @@ export type { TemplateStore } from "./template.store"
 
 export { useRightPanelStore } from "./right-panel.store"
 export type { RightPanelKind, RightPanelStore } from "./right-panel.store"
+
+export * from "./compose-settings.store"
