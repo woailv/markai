@@ -2,16 +2,16 @@ import { useCallback, useEffect, useState } from "react"
 
 import {
   ConversationService,
-  PromptTemplateService,
   SnapshotService,
 } from "@/../bindings/prompttool/internal/services"
 
 import { encodeTemplateToken } from "@/components/rich-editor"
+import { useTemplateStore } from "@/store"
 
 import { COMMAND_TAG_DETECT_RE, parseCommands } from "./executor/command-parser"
 import { executeCommands } from "./executor/command-executor"
 import { withExecMeta } from "./executor/exec-meta"
-import type { ChatMessage, Template } from "./types"
+import type { ChatMessage } from "./types"
 
 interface Options {
   /** 已落库会话 id。null 表示新会话,首次发送后会通过 onConversationCreated 回填。 */
@@ -32,7 +32,10 @@ export function useChatSession({
   onConversationsChanged,
 }: Options) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [templates, setTemplates] = useState<Template[]>([])
+  // 模板列表统一走 useTemplateStore,避免本 hook 维护一份副本。
+  // 之前的实现会在"新建模板"后因本地副本未刷新而导致 composer 模板选择框看不到新模板。
+  const templates = useTemplateStore((s) => s.templates)
+  const loadTemplatesFromStore = useTemplateStore((s) => s.load)
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(
     new Set(),
   )
@@ -46,18 +49,18 @@ export function useChatSession({
     setCurrentConvId(conversationId)
   }, [conversationId])
 
-  const loadTemplates = useCallback(async () => {
-    const list = (await PromptTemplateService.List()) ?? []
-    setTemplates(list)
+  // 模板列表变化时,剔除 selectedTemplateIds 中已被删除的项。
+  useEffect(() => {
     setSelectedTemplateIds((prev) => {
-      const existing = new Set(list.map((t) => t.id))
+      if (prev.size === 0) return prev
+      const existing = new Set(templates.map((t) => t.id))
       const next = new Set<number>()
       prev.forEach((id) => {
         if (existing.has(id)) next.add(id)
       })
       return next.size === prev.size ? prev : next
     })
-  }, [])
+  }, [templates])
 
   const loadConversation = useCallback(
     async (id: number) => {
@@ -82,9 +85,9 @@ export function useChatSession({
     [],
   )
 
-  // 初次挂载:加载模板 + (若有 convId)加载会话
+  // 初次挂载:确保模板 store 已加载 + (若有 convId)加载会话
   useEffect(() => {
-    void loadTemplates()
+    void loadTemplatesFromStore()
     if (conversationId != null) {
       void loadConversation(conversationId)
     }
@@ -265,7 +268,10 @@ export function useChatSession({
     [currentConvId],
   )
 
-  const refreshTemplates = loadTemplates
+  const refreshTemplates = useCallback(async () => {
+    // 兼容原有 API;实际数据源为 store,直接触发 store.load。
+    await useTemplateStore.getState().load()
+  }, [])
 
   return {
     messages,

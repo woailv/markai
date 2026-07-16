@@ -1,6 +1,5 @@
 import { useCallback, useEffect } from "react"
 
-import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
 import { useRightPanelStore, useTabStore, useTemplateStore } from "@/store"
 
 import { ChatPanel } from "../chat-panel"
@@ -40,7 +39,6 @@ export function ChatTabView({
     deleteMessage,
     editMessage,
     toggleTemplate,
-    refreshTemplates,
   } = useChatSession({
     conversationId,
     onConversationCreated: (newId) => {
@@ -86,12 +84,12 @@ export function ChatTabView({
     [openTemplateTab],
   )
 
+  // 删除走 store,session 内的 templates 是对 store 的订阅,会自动刷新。
   const handleDeleteTemplate = useCallback(
     async (id: number) => {
-      await PromptTemplateService.Delete(id)
-      await refreshTemplates()
+      await useTemplateStore.getState().remove(id)
     },
-    [refreshTemplates],
+    [],
   )
 
   // 若 tab 有一个绑定 convId 但会话不存在(被外部删除),useChatSession 内部
