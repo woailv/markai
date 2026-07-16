@@ -7,6 +7,7 @@ import {
   useState,
 } from "react"
 
+import { Badge } from "@/components/ui/badge"
 import {
   Popover,
   PopoverContent,
@@ -220,11 +221,9 @@ function TemplateTag({
   onRemove: (e: React.MouseEvent) => void
 }) {
   return (
-    <span
-      className={cn(
-        "group inline-flex h-6 shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/10 pl-1.5 pr-0.5 text-[11px] text-foreground",
-        "max-w-[160px] transition-colors hover:bg-primary/15",
-      )}
+    <Badge
+      variant="secondary"
+      className="group h-6 max-w-[160px] shrink-0 gap-1 pl-2 pr-1 text-[11px] font-normal"
     >
       <button
         type="button"
@@ -242,6 +241,6 @@ function TemplateTag({
       >
         <X className="h-2.5 w-2.5" />
       </button>
-    </span>
+    </Badge>
   )
 }
