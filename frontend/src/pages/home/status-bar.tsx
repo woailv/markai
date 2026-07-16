@@ -68,7 +68,7 @@ export function StatusBar() {
           kind="history"
           activePanel={panel}
           onToggle={togglePanel}
-          label="历史"
+          label="会话"
           icon={<PanelRight className="h-3 w-3" />}
         />
       </div>

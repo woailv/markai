@@ -27,7 +27,7 @@ export function HistorySidebar({
     <div className="flex h-full w-64 shrink-0 flex-col border-l bg-muted/20">
       <div className="flex h-9 shrink-0 items-center justify-between gap-1 border-b bg-muted/30 px-2">
         <span className="min-w-0 flex-1 truncate text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-          历史会话
+          会话
         </span>
         <div className="flex items-center gap-0.5">
           <Button
@@ -54,7 +54,7 @@ export function HistorySidebar({
       <div className="flex-1 space-y-1 overflow-y-auto p-2">
         {conversations.length === 0 ? (
           <div className="p-4 text-center text-xs text-muted-foreground">
-            暂无历史会话
+            暂无会话
           </div>
         ) : (
           conversations.map((c) => (
