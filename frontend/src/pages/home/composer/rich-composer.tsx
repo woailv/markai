@@ -15,6 +15,11 @@ import {
 import { cn } from "@/lib/utils"
 import { useComposeSettingsStore, useDraftStore } from "@/store"
 
+import {
+  buildFilesContext,
+  extractFilePathsFromMessages,
+} from "../file-context"
+import { buildTemplatesContext } from "../template-context"
 import { ComposerToolbar } from "./composer-toolbar"
 import type { Template } from "../types"
 
@@ -65,17 +70,42 @@ export function RichComposer({
     if (!plain) return
     onSend(plain)
 
-    // 根据用户设置,发送后可选地写入剪贴板
+    // 根据用户设置,发送后可选地将"解析后的完整内容"写入剪贴板。
+    // 与 chat-panel 中点击用户消息复制按钮的输出保持一致:
+    //   templatesContext + filesContext + "**User**:\n\n{body}"
+    // 额外考虑:工具栏勾选但未在消息中内联插入 token 的模板也需包含,
+    // 避免"选了模板但没内联"导致复制时漏掉模板内容。
     if (useComposeSettingsStore.getState().copyAfterSend) {
-      // navigator.clipboard 可能因权限/环境失败,静默降级不影响主流程
-      void navigator.clipboard?.writeText(plain).catch(() => {
-        /* 忽略剪贴板写入失败 */
-      })
+      const body = plain
+      const tokenPaths = extractFilePathsFromMessages([body])
+      const extraTemplateIds = Array.from(selectedTemplateIds)
+
+      void (async () => {
+        try {
+          const filesContext = await buildFilesContext(tokenPaths)
+          const templatesContext = buildTemplatesContext(
+            [body],
+            templates,
+            extraTemplateIds,
+          )
+          const header = `**User**:\n\n${body}`
+          const prefixes = [templatesContext, filesContext].filter(
+            (s) => s.length > 0,
+          )
+          const finalText =
+            prefixes.length > 0
+              ? `${prefixes.join("\n\n")}\n\n${header}`
+              : header
+          await navigator.clipboard?.writeText(finalText)
+        } catch {
+          /* 忽略剪贴板/上下文构建失败,不影响主流程 */
+        }
+      })()
     }
 
     setDoc("")
     clearDraft()
-  }, [doc, onSend, clearDraft])
+  }, [doc, onSend, clearDraft, selectedTemplateIds, templates])
 
   /**
    * 模板勾选:仅同步 selectedTemplateIds 状态,不自动向文档插入 token。
