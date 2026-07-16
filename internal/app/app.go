@@ -76,6 +76,11 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
+		KeyBindings: map[string]func(window application.Window){
+			"F12": func(window application.Window) {
+				window.OpenDevTools()
+			},
+		},
 	})
 
 	if registry.Dialog != nil {
