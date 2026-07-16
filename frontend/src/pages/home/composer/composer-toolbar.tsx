@@ -1,9 +1,8 @@
-import { BookMarked, ChevronDown, Send } from "lucide-react"
+import { BookMarked, Send } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-import { SelectedTemplatesPopover } from "./selected-templates-popover"
 import { TemplatePickerPopover } from "./template-picker-popover"
 import type { Template } from "../types"
 
@@ -26,13 +25,9 @@ export function ComposerToolbar({
   onCreateTemplate,
   onEditTemplate,
   onDeleteTemplate,
-  isDragOver,
   canSend,
   onSend,
 }: ComposerToolbarProps) {
-  const selectedTemplates = templates.filter((t) => selectedIds.has(t.id))
-  const selectedCount = selectedTemplates.length
-
   return (
     <div className="flex items-center gap-1">
       {/* 📚 模板选择器 */}
@@ -53,27 +48,9 @@ export function ComposerToolbar({
           )}
         >
           <BookMarked className="h-3.5 w-3.5" />
-          {selectedCount === 0 && <span>模板</span>}
+          <span>模板</span>
         </button>
       </TemplatePickerPopover>
-
-      {/* 已选模板摘要芯片 */}
-      {selectedCount > 0 && (
-        <SelectedTemplatesPopover
-          templates={selectedTemplates}
-          onRemove={onToggleTemplate}
-          onEdit={onEditTemplate}
-        >
-          <button
-            type="button"
-            title="已选模板详情"
-            className="flex h-6 items-center gap-1 rounded-md bg-primary/10 px-1.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/15"
-          >
-            <span>{selectedCount} 模板</span>
-            <ChevronDown className="h-3 w-3" />
-          </button>
-        </SelectedTemplatesPopover>
-      )}
 
       {/* 右侧发送 */}
       <div className="ml-auto">

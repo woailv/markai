@@ -1,4 +1,4 @@
-import { FileText, Pencil, Plus, Search, Trash2 } from "lucide-react"
+import { FileText, Plus, Search, SquareArrowOutUpRight } from "lucide-react"
 import { useMemo, useState, type ReactElement } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -29,7 +29,6 @@ export function TemplatePickerPopover({
   onToggle,
   onCreate,
   onEdit,
-  onDelete,
   children,
 }: TemplatePickerPopoverProps) {
   const [open, setOpen] = useState(false)
@@ -53,12 +52,6 @@ export function TemplatePickerPopover({
         preview.summary.toLowerCase().includes(q),
     )
   }, [enriched, query])
-
-  const handleDelete = (id: number, title: string) => {
-    if (window.confirm(`确定删除模板「${title}」?此操作不可恢复。`)) {
-      onDelete(id)
-    }
-  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -153,20 +146,10 @@ export function TemplatePickerPopover({
                             setOpen(false)
                             onEdit(tpl.id)
                           }}
-                          title="编辑"
+                          title="在标签页打开编辑"
                           className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
                         >
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDelete(tpl.id, tpl.title || "未命名")
-                          }
-                          title="删除"
-                          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <Trash2 className="h-3 w-3" />
+                          <SquareArrowOutUpRight className="h-3 w-3" />
                         </button>
                       </div>
                     </div>

@@ -11,6 +11,7 @@ import {
   RichEditor,
   type RichEditorHandle,
   documentToPlainText,
+  extractTemplateRefs,
 } from "@/components/rich-editor"
 import { cn } from "@/lib/utils"
 import { useDraftStore } from "@/store"
@@ -67,6 +68,41 @@ export function RichComposer({
     setDoc("")
     clearDraft()
   }, [doc, onSend, clearDraft])
+
+  /**
+   * 模板勾选:选中时在光标处插入 token,取消时从文档中清除该 id 的所有 token,
+   * 同时同步 selectedTemplateIds 状态。
+   */
+  const handleToggleTemplate = useCallback(
+    (id: number) => {
+      const handle = editorRef.current
+      const tpl = templates.find((t) => t.id === id)
+      if (handle && tpl) {
+        if (selectedTemplateIds.has(id)) {
+          handle.removeTemplateToken(id)
+        } else {
+          handle.insertTemplateAtCursor(id, tpl.title || `模板${id}`)
+        }
+      }
+      onToggleTemplate(id)
+    },
+    [templates, selectedTemplateIds, onToggleTemplate],
+  )
+
+  /**
+   * 当文档中的模板 token 被用户手动删除(例如退格删除 chip)时,
+   * 同步取消其在 selectedTemplateIds 中的勾选态。
+   */
+  useEffect(() => {
+    const inDoc = new Set(extractTemplateRefs([doc]).map((r) => r.id))
+    for (const id of selectedTemplateIds) {
+      if (!inDoc.has(id)) {
+        onToggleTemplate(id)
+      }
+    }
+    // 只在 doc 变化时反查;selectedTemplateIds/onToggleTemplate 变化不触发
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc])
 
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
     if (e.dataTransfer?.types?.includes("Files")) {
@@ -191,7 +227,7 @@ export function RichComposer({
         <ComposerToolbar
           templates={templates}
           selectedIds={selectedTemplateIds}
-          onToggleTemplate={onToggleTemplate}
+          onToggleTemplate={handleToggleTemplate}
           onCreateTemplate={onCreateTemplate}
           onEditTemplate={onEditTemplate}
           onDeleteTemplate={onDeleteTemplate}

@@ -31,6 +31,10 @@ import {
   createTemplateChipPlugin,
   type TemplateChipVariant,
 } from "./template-chip"
+import {
+  encodeTemplateToken,
+  TEMPLATE_TOKEN_REGEX,
+} from "./template-token-utils"
 
 export type RichEditorMode = "editable" | "readonly" | "readonly-inverted"
 
@@ -55,6 +59,12 @@ export interface RichEditorHandle {
   insertFilesAtCursor: (paths: string[]) => void
   /** 在指定坐标处插入若干文件路径的 token */
   insertFilesAtCoords: (paths: string[], clientX: number, clientY: number) => void
+  /** 在光标处插入模板 token */
+  insertTemplateAtCursor: (id: number, name: string) => void
+  /** 移除文档中指定 id 的所有模板 token */
+  removeTemplateToken: (id: number) => void
+  /** 判断文档是否包含指定 id 的模板 token */
+  hasTemplateToken: (id: number) => boolean
   focus: () => void
 }
 
@@ -294,6 +304,57 @@ export function RichEditor({
           scrollIntoView: true,
         })
         view.focus()
+      },
+      insertTemplateAtCursor(id, name) {
+        const view = viewRef.current
+        if (!view) return
+        const sel = view.state.selection.main
+        const doc = view.state.doc.toString()
+        // 光标前若非空白/换行,先补一个空格,让 chip 与前文有间隔
+        const prevChar = sel.from > 0 ? doc[sel.from - 1] : ""
+        const leadingSpace =
+          prevChar && !/\s/.test(prevChar) ? " " : ""
+        const token = encodeTemplateToken(id, name)
+        const insert = `${leadingSpace}${token} `
+        view.dispatch({
+          changes: { from: sel.from, to: sel.to, insert },
+          selection: { anchor: sel.from + insert.length },
+          scrollIntoView: true,
+        })
+        view.focus()
+      },
+      removeTemplateToken(id) {
+        const view = viewRef.current
+        if (!view) return
+        const doc = view.state.doc.toString()
+        const re = new RegExp(TEMPLATE_TOKEN_REGEX.source, "g")
+        const changes: { from: number; to: number; insert: string }[] = []
+        let m: RegExpExecArray | null
+        while ((m = re.exec(doc))) {
+          if (Number(m[2]) !== id) continue
+          let from = m.index
+          let to = m.index + m[0].length
+          // 一并吃掉紧随其后的单个空格(避免删除后遗留孤立空格)
+          if (doc[to] === " ") to += 1
+          else if (from > 0 && doc[from - 1] === " " && (to >= doc.length || doc[to] === "\n")) {
+            // 若 token 位于行尾且前面有空格,吃掉前面的空格
+            from -= 1
+          }
+          changes.push({ from, to, insert: "" })
+        }
+        if (changes.length === 0) return
+        view.dispatch({ changes })
+      },
+      hasTemplateToken(id) {
+        const view = viewRef.current
+        if (!view) return false
+        const doc = view.state.doc.toString()
+        const re = new RegExp(TEMPLATE_TOKEN_REGEX.source, "g")
+        let m: RegExpExecArray | null
+        while ((m = re.exec(doc))) {
+          if (Number(m[2]) === id) return true
+        }
+        return false
       },
       focus() {
         viewRef.current?.focus()
