@@ -20,6 +20,7 @@ import {
 import { useState, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
+import { useTabStore } from "@/store/tab.store"
 
 import type { ExecResultBase, ExecStatus } from "../executor/command-executor"
 import type { ParsedCommand } from "../executor/command-parser"
@@ -126,7 +127,10 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
           {meta.label}
         </span>
 
-        <PathDisplay path={primaryPath} />
+        <PathDisplay 
+          path={primaryPath} 
+          openPath={command.kind === "MOVE_PATH" ? command.destination : ("path" in command ? command.path : undefined)} 
+        />
 
         {canCopyAsFiles && (
           <button
@@ -320,12 +324,23 @@ function CodePreview({
   )
 }
 
-/** 路径显示:过长时中间省略,hover 显示全路径 */
-function PathDisplay({ path }: { path: string }) {
+/** 路径显示:过长时中间省略,hover 显示全路径。支持双击选中文本，按住 Ctrl 单击打开文件 */
+function PathDisplay({ path, openPath }: { path: string; openPath?: string }) {
+  const openFile = useTabStore((s) => s.openFile)
+
+  const handleClick = (e: React.MouseEvent) => {
+    if ((e.ctrlKey || e.metaKey) && openPath) {
+      e.preventDefault()
+      e.stopPropagation()
+      openFile(openPath)
+    }
+  }
+
   return (
     <span
-      title={path}
-      className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/90"
+      title={path + (openPath ? "\n(Ctrl+Click 打开文件)" : "")}
+      onClick={handleClick}
+      className="min-w-0 flex-1 cursor-text select-text truncate font-mono text-[11px] text-foreground/90 hover:underline hover:decoration-muted-foreground hover:underline-offset-2"
       dir="rtl"
       style={{ textAlign: "left" }}
     >
