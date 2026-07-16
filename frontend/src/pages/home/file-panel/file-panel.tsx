@@ -1,5 +1,6 @@
 import { markdown } from "@codemirror/lang-markdown"
-import { EditorView, type Extension } from "@codemirror/view"
+import { type Extension } from "@codemirror/state"
+import { EditorView } from "@codemirror/view"
 import CodeMirror from "@uiw/react-codemirror"
 import { AlertTriangle, FileWarning, Loader2 } from "lucide-react"
 import { useCallback, useEffect, useMemo } from "react"

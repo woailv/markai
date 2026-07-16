@@ -1,12 +1,12 @@
 import { useCallback, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
 
 import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
-import { useTabStore } from "@/store"
+import { useRightPanelStore, useTabStore, useTemplateStore } from "@/store"
 
 import { ChatPanel } from "../chat-panel"
 import { ConfirmDialogHost, confirmDestructive } from "../executor/confirm-dialog"
 import { useChatSession } from "../use-chat-session"
+import { createTemplateWithDialog } from "./create-template-flow"
 
 interface ChatTabViewProps {
   tabId: string
@@ -25,9 +25,10 @@ export function ChatTabView({
   onConversationsChanged,
   onOpenHistory,
 }: ChatTabViewProps) {
-  const navigate = useNavigate()
   const bindConversation = useTabStore((s) => s.bindConversation)
   const updateTitle = useTabStore((s) => s.updateTitle)
+  const openTemplateTab = useTabStore((s) => s.openTemplateTab)
+  const showRightPanel = useRightPanelStore((s) => s.show)
 
   const {
     messages,
@@ -68,13 +69,21 @@ export function ChatTabView({
     [deleteMessage],
   )
 
+  // 新建模板:与侧边栏 "+" 逻辑一致 —— 先弹出名称输入框,
+  // 落库成功后 createTemplateWithDialog 内部会调用 openTemplateTab 打开对应标签页。
+  // 同时把右侧面板切到"模板",让用户新建后能在侧栏看到该条目。
   const handleCreateTemplate = useCallback(() => {
-  }, [navigate])
+    showRightPanel("template")
+    void createTemplateWithDialog()
+  }, [showRightPanel])
 
+  // 打开模板到标签页:从 store 拿最新 title,避免闭包过时。
   const handleEditTemplate = useCallback(
     (id: number) => {
+      const tpl = useTemplateStore.getState().getById(id)
+      openTemplateTab(id, tpl?.title || "未命名模板")
     },
-    [navigate],
+    [openTemplateTab],
   )
 
   const handleDeleteTemplate = useCallback(

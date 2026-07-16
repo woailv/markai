@@ -1,10 +1,12 @@
 import { BookMarked, Send } from "lucide-react"
+import { useMemo } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-import { TemplatePickerPopover } from "./template-picker-popover"
 import type { Template } from "../types"
+import { SelectedTemplateTags } from "./selected-template-tags"
+import { TemplatePickerPopover } from "./template-picker-popover"
 
 interface ComposerToolbarProps {
   templates: Template[]
@@ -28,8 +30,19 @@ export function ComposerToolbar({
   canSend,
   onSend,
 }: ComposerToolbarProps) {
+  // 已选模板按 selectedIds 顺序解析出实际 Template 引用,过滤已被删除的项。
+  const selectedTemplates = useMemo(() => {
+    const map = new Map(templates.map((t) => [t.id, t]))
+    const result: Template[] = []
+    for (const id of selectedIds) {
+      const tpl = map.get(id)
+      if (tpl) result.push(tpl)
+    }
+    return result
+  }, [templates, selectedIds])
+
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1.5">
       {/* 📚 模板选择器 */}
       <TemplatePickerPopover
         templates={templates}
@@ -43,7 +56,7 @@ export function ComposerToolbar({
           type="button"
           title="选择模板"
           className={cn(
-            "flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors",
+            "flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors",
             "hover:bg-muted hover:text-foreground",
           )}
         >
@@ -52,8 +65,15 @@ export function ComposerToolbar({
         </button>
       </TemplatePickerPopover>
 
+      {/* 已选模板 tags(单行,溢出折叠为"更多") */}
+      <SelectedTemplateTags
+        templates={selectedTemplates}
+        onOpen={onEditTemplate}
+        onRemove={onToggleTemplate}
+      />
+
       {/* 右侧发送 */}
-      <div className="ml-auto">
+      <div className="ml-auto shrink-0">
         <Button
           type="button"
           size="sm"

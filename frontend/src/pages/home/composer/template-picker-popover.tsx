@@ -139,15 +139,23 @@ export function TemplatePickerPopover({
                           {preview.chars}字
                         </span>
                       </button>
-                      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="flex shrink-0 items-center gap-0.5">
                         <button
                           type="button"
-                          onClick={() => {
-                            setOpen(false)
+                          // 用 onMouseDown 触发,避免 Popover 在 click 前因焦点/blur 而关闭
+                          // 导致按钮卸载、click 事件丢失(打开按钮点击无响应的根因)。
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
                             onEdit(tpl.id)
+                            setOpen(false)
                           }}
                           title="在标签页打开编辑"
-                          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                          className={cn(
+                            "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
+                            "opacity-0 transition-opacity hover:bg-muted hover:text-foreground",
+                            "group-hover:opacity-100 focus:opacity-100",
+                          )}
                         >
                           <SquareArrowOutUpRight className="h-3 w-3" />
                         </button>
