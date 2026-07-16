@@ -1,4 +1,4 @@
-import { FileCode2, PanelLeft, PanelRight } from "lucide-react"
+import { FileCode2, MessagesSquare, PanelLeft } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -69,7 +69,7 @@ export function StatusBar() {
           activePanel={panel}
           onToggle={togglePanel}
           label="会话"
-          icon={<PanelRight className="h-3 w-3" />}
+          icon={<MessagesSquare className="h-3 w-3" />}
         />
       </div>
     </footer>
