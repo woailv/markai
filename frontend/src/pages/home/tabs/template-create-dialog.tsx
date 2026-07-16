@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import {
   AlertDialog,
@@ -42,11 +42,15 @@ export function openCreateTemplateDialog(): Promise<string | null> {
 export function CreateTemplateDialogHost() {
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState("")
-  const [resolver, setResolver] = useState<Resolver | null>(null)
+  // 用 ref 保存 resolver,避免受 React 状态更新时序影响:
+  // Radix 的 AlertDialogAction 在自身 onClick 中会调用 onOpenChange(false),
+  // 若用 state 保存 resolver,可能出现 onOpenChange 先以 null resolve、
+  // 之后自定义 onClick 再也拿不到 resolver 的竞态问题。
+  const resolverRef = useRef<Resolver | null>(null)
 
   useEffect(() => {
     mount = (r) => {
-      setResolver(() => r)
+      resolverRef.current = r
       setTitle("")
       setOpen(true)
     }
@@ -56,8 +60,9 @@ export function CreateTemplateDialogHost() {
   }, [])
 
   const finish = (val: string | null) => {
-    resolver?.(val)
-    setResolver(null)
+    const r = resolverRef.current
+    resolverRef.current = null
+    r?.(val)
     setOpen(false)
   }
 
