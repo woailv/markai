@@ -47,7 +47,7 @@ func (s *PromptTemplateService) Create(in CreateInput) (*PromptTemplate, error) 
 		return nil, errors.New("prompt_template: title required")
 	}
 	if content == "" {
-		return nil, errors.New("prompt_template: content required")
+		//return nil, errors.New("prompt_template: content required")
 	}
 	tpl := &PromptTemplate{
 		Title:   title,
