@@ -20,6 +20,7 @@ import { HistorySidebar } from "./history-sidebar"
 import { StatusBar } from "./status-bar"
 import { TabBar } from "./tabs/tab-bar"
 import { TabContent } from "./tabs/tab-content"
+import { createTemplateWithDialog } from "./tabs/create-template-flow"
 import { TemplateSidebar } from "./template-sidebar"
 import { WorkspacePanel } from "./workspace-tree"
 
@@ -40,7 +41,6 @@ export default function HomePage() {
   const openChatTab = useTabStore((s) => s.openChatTab)
   const openNewChatTab = useTabStore((s) => s.openNewChatTab)
   const openTemplateTab = useTabStore((s) => s.openTemplateTab)
-  const openNewTemplateTab = useTabStore((s) => s.openNewTemplateTab)
   const updateTitle = useTabStore((s) => s.updateTitle)
   const onConversationDeleted = useTabStore((s) => s.onConversationDeleted)
   const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
@@ -192,10 +192,10 @@ export default function HomePage() {
   )
 
   const handleNewTemplate = useCallback(() => {
-    openNewTemplateTab()
     // 新建模板通常发生在用户点了侧边栏的 "+"; 保持模板面板可见
     showRightPanel("template")
-  }, [openNewTemplateTab, showRightPanel])
+    void createTemplateWithDialog()
+  }, [showRightPanel])
 
   const handleRenameTemplate = useCallback(
     async (id: number, newTitle: string) => {
@@ -238,8 +238,8 @@ export default function HomePage() {
 
   // -------- 供 ChatPanel 使用的模板回调:打开为主编辑区的 tab --------
   const handleComposerCreateTemplate = useCallback(() => {
-    openNewTemplateTab()
-  }, [openNewTemplateTab])
+    void createTemplateWithDialog()
+  }, [])
 
   const handleComposerEditTemplate = useCallback(
     (id: number) => {

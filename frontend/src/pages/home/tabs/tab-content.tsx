@@ -7,6 +7,7 @@ import { useTabStore } from "@/store"
 import { FilePanel } from "../file-panel"
 import { ChatTabView } from "./chat-tab-view"
 import { CloseConfirmDialogHost } from "./close-confirm-dialog"
+import { CreateTemplateDialogHost } from "./template-create-dialog"
 import { TemplateTabView } from "./template-tab-view"
 import { useTabShortcuts } from "./use-tab-shortcuts"
 
@@ -43,6 +44,7 @@ export function TabContent({
           </Button>
         </div>
         <CloseConfirmDialogHost />
+        <CreateTemplateDialogHost />
       </>
     )
   }
@@ -90,6 +92,7 @@ export function TabContent({
         )
       })}
       <CloseConfirmDialogHost />
+      <CreateTemplateDialogHost />
     </div>
   )
 }
