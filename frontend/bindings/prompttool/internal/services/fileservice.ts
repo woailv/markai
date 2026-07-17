@@ -18,6 +18,16 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * CopyPathsToWorkspace 将 srcPaths 中的每个文件/目录复制到 workspaceDir。
+ * Cut=true 时,单项复制成功后立即删除对应源(剪切语义)。
+ * 目标同名自动重命名为 "name (1).ext"、"name (2).ext" 等。
+ * 任一源失败即中止,返回此前已成功写入的目标绝对路径与错误。
+ */
+export function CopyPathsToWorkspace(srcPaths: string[] | null, workspaceDir: string, cut: boolean): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1348664340, srcPaths, workspaceDir, cut);
+}
+
+/**
  * CreateDirectory 创建目录,包含所有必要的父目录。
  * 保留原有签名以兼容旧调用;带批次撤销能力请使用 CreateDirectoryWithBatch。
  */
@@ -99,4 +109,12 @@ export function Rename($in: $models.RenameInput): $CancellablePromise<$models.Re
  */
 export function Write($in: $models.WriteFileInput): $CancellablePromise<$models.WriteFileResult | null> {
     return $Call.ByID(2571361002, $in);
+}
+
+/**
+ * WriteBytesToWorkspace 将字节流写入 workspaceDir 下的 fileName。
+ * fileName 必须为纯文件名,不允许包含路径分隔符或 "..";同名自动重命名。
+ */
+export function WriteBytesToWorkspace(fileName: string, data: string | null, workspaceDir: string): $CancellablePromise<string> {
+    return $Call.ByID(3890009509, fileName, data, workspaceDir);
 }

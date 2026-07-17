@@ -81,3 +81,18 @@ type RenameResult struct {
 	OldPath string `json:"oldPath"`
 	Renamed bool   `json:"renamed"`
 }
+
+// CopyToWorkspaceInput 外部文件导入工作区入参。
+// Cut=true 表示剪切语义:复制成功后删除源。
+type CopyToWorkspaceInput struct {
+	SrcPaths     []string `json:"srcPaths"`
+	WorkspaceDir string   `json:"workspaceDir"`
+	Cut          bool     `json:"cut"`
+}
+
+// WriteBytesInput 将字节流写入工作区入参(用于粘贴场景)。
+type WriteBytesInput struct {
+	FileName     string `json:"fileName"`
+	Data         []byte `json:"data"`
+	WorkspaceDir string `json:"workspaceDir"`
+}
