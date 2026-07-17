@@ -142,46 +142,57 @@ export function TemplatePickerPopover({
                         <span className="min-w-0 flex-1 truncate text-xs">
                           {tpl.title || "未命名"}
                         </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                      </button>
+                      {/* 右侧尾部:默认显示字数,hover 时切换为操作按钮组(占位一致,避免抖动) */}
+                      <div className="relative flex shrink-0 items-center">
+                        <span
+                          className={cn(
+                            "text-[10px] text-muted-foreground transition-opacity",
+                            "group-hover:opacity-0",
+                          )}
+                        >
                           {preview.chars}字
                         </span>
-                      </button>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <button
-                          type="button"
-                          // 用 onMouseDown 触发,避免 Popover 在 click 前因焦点/blur 而关闭
-                          // 导致按钮卸载、click 事件丢失(打开按钮点击无响应的根因)。
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            onEdit(tpl.id)
-                            setOpen(false)
-                          }}
-                          title="在标签页打开编辑"
+                        <div
                           className={cn(
-                            "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
-                            "opacity-0 transition-opacity hover:bg-muted hover:text-foreground",
-                            "group-hover:opacity-100 focus:opacity-100",
+                            "absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5",
+                            "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
                           )}
                         >
-                          <SquareArrowOutUpRight className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            onDelete(tpl.id)
-                          }}
-                          title="删除模板"
-                          className={cn(
-                            "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
-                            "opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive",
-                            "group-hover:opacity-100 focus:opacity-100",
-                          )}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                          <button
+                            type="button"
+                            // 用 onMouseDown 触发,避免 Popover 在 click 前因焦点/blur 而关闭
+                            // 导致按钮卸载、click 事件丢失(打开按钮点击无响应的根因)。
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              onEdit(tpl.id)
+                              setOpen(false)
+                            }}
+                            title="在标签页打开编辑"
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
+                              "hover:bg-muted hover:text-foreground",
+                            )}
+                          >
+                            <SquareArrowOutUpRight className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              onDelete(tpl.id)
+                            }}
+                            title="删除模板"
+                            className={cn(
+                              "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
+                              "hover:bg-destructive/10 hover:text-destructive",
+                            )}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </li>
