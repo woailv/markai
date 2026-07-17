@@ -438,7 +438,16 @@ function UserBubble({
         <User className="h-3.5 w-3.5" />
       </div>
 
-      <div className="flex min-w-0 max-w-[calc(78%-8rem)] flex-col items-end gap-1">
+      <div
+        className={cn(
+          "flex min-w-0 flex-col items-end gap-1",
+          // 编辑态放宽宽度上限,避免 min-width 撑破布局;
+          // 只读态保留原有 78% - 8rem 的紧凑气泡宽度。
+          editing
+            ? "w-full max-w-[calc(100%-2.5rem)]"
+            : "max-w-[calc(78%-8rem)]",
+        )}
+      >
         <div
           className={cn(
             "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
@@ -946,7 +955,7 @@ function MessageEditor({
 
   return (
     <div
-      className="flex min-w-[300px] flex-col gap-2"
+      className="flex w-full min-w-0 flex-col gap-2"
       onKeyDown={handleKeyDown}
     >
       <div
@@ -956,7 +965,7 @@ function MessageEditor({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "rounded border bg-background/80 px-2 py-1 text-foreground transition-colors",
+          "w-full min-w-0 rounded border bg-background/80 px-2 py-1 text-foreground transition-colors",
           "focus-within:ring-1 focus-within:ring-ring",
           isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
           "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
@@ -969,7 +978,7 @@ function MessageEditor({
           fileTokens={{ enabled: true, allowDrop: true }}
           templateTokens={{ enabled: true }}
           editorRef={editorRef}
-          className="w-full"
+          className="w-full min-w-0"
         />
       </div>
       <div className="flex justify-end gap-1">
