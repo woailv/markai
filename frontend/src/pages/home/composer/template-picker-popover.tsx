@@ -7,6 +7,16 @@ import {
 } from "lucide-react"
 import { useMemo, useState, type ReactElement } from "react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Popover,
@@ -40,6 +50,12 @@ export function TemplatePickerPopover({
 }: TemplatePickerPopoverProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+
+  const pendingDeleteTpl = useMemo(
+    () => templates.find((t) => t.id === pendingDeleteId) ?? null,
+    [templates, pendingDeleteId],
+  )
 
   const enriched = useMemo(
     () =>
@@ -182,7 +198,7 @@ export function TemplatePickerPopover({
                             onMouseDown={(e) => {
                               e.preventDefault()
                               e.stopPropagation()
-                              onDelete(tpl.id)
+                              setPendingDeleteId(tpl.id)
                             }}
                             title="删除模板"
                             className={cn(
@@ -202,6 +218,32 @@ export function TemplatePickerPopover({
           )}
         </div>
       </PopoverContent>
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除模板</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除模板「{pendingDeleteTpl?.title || "未命名"}」吗?此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeleteId !== null) onDelete(pendingDeleteId)
+                setPendingDeleteId(null)
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Popover>
   )
 }
