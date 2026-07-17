@@ -14,6 +14,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -184,16 +185,12 @@ function TreeArea() {
     const preview = names.slice(0, 5).join("、")
     const rest = names.length > 5 ? ` 等 ${names.length} 项` : ""
     return (
-      <div>
-        <div>将删除以下 {names.length} 项(目录会递归删除):</div>
-        <div className="mt-1.5 rounded bg-muted/60 px-2 py-1 font-mono text-[11px] text-foreground/80">
-          {preview}
-          {rest}
+      <>
+        <div>
+          将删除以下 {names.length} 项(目录会递归删除):「{preview}
+          {rest}」。此操作无法撤销。
         </div>
-        <div className="mt-1.5 text-[11px] text-destructive/80">
-          此操作不可撤销。
-        </div>
-      </div>
+      </>
     )
   }, [deleteTargets])
 
@@ -367,10 +364,10 @@ function TreeArea() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDescription}
+            </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="text-sm text-muted-foreground">
-            {deleteDescription}
-          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
