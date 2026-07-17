@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react"
 import { useRightPanelStore, useTabStore, useTemplateStore } from "@/store"
 
 import { ChatPanel } from "../chat-panel"
-import { ConfirmDialogHost, confirmDestructive } from "../executor/confirm-dialog"
+import { confirmDestructive } from "../executor/confirm-dialog"
 import { useChatSession } from "../use-chat-session"
 import { createTemplateWithDialog } from "./create-template-flow"
 
@@ -117,7 +117,6 @@ export function ChatTabView({
         onDeleteTemplate={handleDeleteTemplate}
         conversationTitle=""
       />
-      <ConfirmDialogHost />
     </>
   )
 }

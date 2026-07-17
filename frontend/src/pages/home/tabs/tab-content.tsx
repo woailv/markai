@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useTabStore } from "@/store"
 
+import { ConfirmDialogHost } from "../executor/confirm-dialog"
 import { FilePanel } from "../file-panel"
 import { ChatTabView } from "./chat-tab-view"
 import { CloseConfirmDialogHost } from "./close-confirm-dialog"
@@ -43,6 +44,7 @@ export function TabContent({
             新建会话
           </Button>
         </div>
+        <ConfirmDialogHost />
         <CloseConfirmDialogHost />
         <CreateTemplateDialogHost />
       </>
@@ -91,6 +93,7 @@ export function TabContent({
           </div>
         )
       })}
+      <ConfirmDialogHost />
       <CloseConfirmDialogHost />
       <CreateTemplateDialogHost />
     </div>
