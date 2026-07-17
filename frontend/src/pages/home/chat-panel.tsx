@@ -428,7 +428,10 @@ function UserBubble({
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
           isGrouped
             ? "invisible"
-            : "bg-primary/90 text-primary-foreground ring-1 ring-primary/20",
+            : cn(
+                "bg-primary/10 text-primary ring-1 ring-primary/20",
+                "dark:bg-primary/15 dark:text-primary-foreground/90",
+              ),
         )}
         aria-hidden={isGrouped}
       >
