@@ -2,6 +2,16 @@ import { MessageSquare, Pencil, Pin, PinOff, Plus, Search, Trash2 } from "lucide
 import { useMemo, useState, type ReactElement } from "react"
 
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Popover,
@@ -39,6 +49,7 @@ export function HistoryPopover({
 }: HistoryPopoverProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -50,6 +61,11 @@ export function HistoryPopover({
 
   const pinned = filtered.filter((c) => c.pinned)
   const others = filtered.filter((c) => !c.pinned)
+
+  const pendingDeleteConv = useMemo(
+    () => conversations.find((c) => c.id === pendingDeleteId) ?? null,
+    [conversations, pendingDeleteId],
+  )
 
   const handleRename = (c: ConversationSummary) => {
     const newTitle = window.prompt("输入新标题", c.title)
@@ -64,7 +80,7 @@ export function HistoryPopover({
       <PopoverContent
         side="bottom"
         align="end"
-        className="flex w-[380px] flex-col overflow-hidden p-0"
+        className="flex w-[320px] flex-col overflow-hidden p-0"
       >
         <div className="flex items-center gap-2 border-b px-2.5 py-2">
           <div className="relative flex-1">
@@ -106,7 +122,7 @@ export function HistoryPopover({
                         setOpen(false)
                       }}
                       onRename={() => handleRename(c)}
-                      onDelete={() => onDelete(c.id)}
+                      onRequestDelete={() => setPendingDeleteId(c.id)}
                       onTogglePin={() => onTogglePin(c.id, !c.pinned)}
                     />
                   ))}
@@ -125,7 +141,7 @@ export function HistoryPopover({
                         setOpen(false)
                       }}
                       onRename={() => handleRename(c)}
-                      onDelete={() => onDelete(c.id)}
+                      onRequestDelete={() => setPendingDeleteId(c.id)}
                       onTogglePin={() => onTogglePin(c.id, !c.pinned)}
                     />
                   ))}
@@ -155,6 +171,33 @@ export function HistoryPopover({
           </div>
         )}
       </PopoverContent>
+      <AlertDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除会话</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除会话「{pendingDeleteConv?.title || "新会话"}」吗?此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeleteId !== null) onDelete(pendingDeleteId)
+                setPendingDeleteId(null)
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Popover>
   )
 }
@@ -172,14 +215,14 @@ function HistoryRow({
   active,
   onSelect,
   onRename,
-  onDelete,
+  onRequestDelete,
   onTogglePin,
 }: {
   conv: ConversationSummary
   active: boolean
   onSelect: () => void
   onRename: () => void
-  onDelete: () => void
+  onRequestDelete: () => void
   onTogglePin: () => void
 }) {
   return (
@@ -196,26 +239,42 @@ function HistoryRow({
       <span className="min-w-0 flex-1 truncate" title={conv.title}>
         {conv.title || "新会话"}
       </span>
-      {conv.pinned && (
-        <Pin className="h-3 w-3 shrink-0 text-primary/70 group-hover:opacity-0" />
-      )}
-      <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-background/95 pl-1 group-hover:flex">
-        <RowAction
-          title={conv.pinned ? "取消置顶" : "置顶"}
-          onClick={onTogglePin}
-        >
-          {conv.pinned ? (
-            <PinOff className="h-3 w-3" />
-          ) : (
-            <Pin className="h-3 w-3" />
+      {/* 右侧尾部:默认显示置顶图标(如有),hover 时切换为操作按钮组(占位一致,避免抖动) */}
+      <div className="relative flex shrink-0 items-center">
+        {conv.pinned ? (
+          <Pin
+            className={cn(
+              "h-3 w-3 text-primary/70 transition-opacity",
+              "group-hover:opacity-0",
+            )}
+          />
+        ) : (
+          // 占位,保证 hover 前后宽度稳定
+          <span className="h-3 w-3" aria-hidden />
+        )}
+        <div
+          className={cn(
+            "absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-0.5",
+            "opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
           )}
-        </RowAction>
-        <RowAction title="重命名" onClick={onRename}>
-          <Pencil className="h-3 w-3" />
-        </RowAction>
-        <RowAction title="删除" onClick={onDelete} destructive>
-          <Trash2 className="h-3 w-3" />
-        </RowAction>
+        >
+          <RowAction
+            title={conv.pinned ? "取消置顶" : "置顶"}
+            onMouseDown={onTogglePin}
+          >
+            {conv.pinned ? (
+              <PinOff className="h-3 w-3" />
+            ) : (
+              <Pin className="h-3 w-3" />
+            )}
+          </RowAction>
+          <RowAction title="重命名" onMouseDown={onRename}>
+            <Pencil className="h-3 w-3" />
+          </RowAction>
+          <RowAction title="删除" onMouseDown={onRequestDelete} destructive>
+            <Trash2 className="h-3 w-3" />
+          </RowAction>
+        </div>
       </div>
     </div>
   )
@@ -223,12 +282,12 @@ function HistoryRow({
 
 function RowAction({
   title,
-  onClick,
+  onMouseDown,
   destructive,
   children,
 }: {
   title: string
-  onClick: () => void
+  onMouseDown: () => void
   destructive?: boolean
   children: React.ReactNode
 }) {
@@ -236,13 +295,14 @@ function RowAction({
     <button
       type="button"
       title={title}
-      onClick={(e) => {
+      // 与模板行动按钮保持一致:onMouseDown 触发,避免 Popover 因 blur 关闭导致 click 丢失
+      onMouseDown={(e) => {
+        e.preventDefault()
         e.stopPropagation()
-        onClick()
+        onMouseDown()
       }}
-      onPointerDown={(e) => e.stopPropagation()}
       className={cn(
-        "flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground",
+        "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
         destructive
           ? "hover:bg-destructive/10 hover:text-destructive"
           : "hover:bg-muted hover:text-foreground",

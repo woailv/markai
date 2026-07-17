@@ -238,6 +238,7 @@ export function TemplatePickerPopover({
                 if (pendingDeleteId !== null) onDelete(pendingDeleteId)
                 setPendingDeleteId(null)
               }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               删除
             </AlertDialogAction>
