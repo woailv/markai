@@ -23,8 +23,8 @@ export function TabContent() {
   if (tabs.length === 0) {
     return (
       <>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-          <FileText className="h-8 w-8 opacity-60" />
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 overflow-hidden whitespace-nowrap text-sm text-muted-foreground">
+          <FileText className="h-8 w-8 shrink-0 opacity-60" />
           <div>暂无打开的标签</div>
           <div className="text-xs opacity-70">
             从左侧工作区打开文件,或在右侧面板管理模板
