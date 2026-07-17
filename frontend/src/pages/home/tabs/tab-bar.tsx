@@ -223,7 +223,7 @@ function AllTabsMenu({
           className="flex-1 truncate"
           title={t.kind === "file" ? t.path : t.title}
         >
-          {t.title || (t.kind === "chat" ? "新会话" : "未命名")}
+          {t.title || "未命名"}
         </span>
         {!t.pinned && (
           <button

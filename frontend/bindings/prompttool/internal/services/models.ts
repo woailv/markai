@@ -100,6 +100,7 @@ export interface ConversationSummary {
     "id": number;
     "title": string;
     "titleOverridden": boolean;
+    "pinned": boolean;
     "messageCount": number;
 
     /**
@@ -299,6 +300,14 @@ export interface RenameResult {
     "path": string;
     "oldPath": string;
     "renamed": boolean;
+}
+
+/**
+ * SetPinnedInput 置顶/取消置顶入参。
+ */
+export interface SetPinnedInput {
+    "conversationId": number;
+    "pinned": boolean;
 }
 
 /**

@@ -37,11 +37,11 @@ func NewConversationService(database *db.DB) (*ConversationService, error) {
 
 // ---------- 会话生命周期 ----------
 
-// List 返回会话摘要列表,按 updatedAt 倒序。
+// List 返回会话摘要列表,置顶项排最前,其后按 updatedAt 倒序。
 func (s *ConversationService) List() ([]ConversationSummary, error) {
 	var rows []db.Conversation
 	if err := s.db.
-		Order("updated_at DESC, id DESC").
+		Order("pinned DESC, updated_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
 		return nil, fmt.Errorf("conversation: list: %w", err)
 	}
@@ -122,6 +122,23 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		Conversation: summary,
 		Messages:     dtos,
 	}, nil
+}
+
+// SetPinned 切换会话置顶状态。
+func (s *ConversationService) SetPinned(in SetPinnedInput) error {
+	if in.ConversationID == 0 {
+		return errors.New("conversation: id required")
+	}
+	res := s.db.Model(&db.Conversation{}).
+		Where("id = ?", in.ConversationID).
+		Update("pinned", in.Pinned)
+	if res.Error != nil {
+		return fmt.Errorf("conversation: set pinned: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("conversation: not found: %d", in.ConversationID)
+	}
+	return nil
 }
 
 // Rename 更新会话标题,并标记为用户覆盖(避免后续自动摘要覆写)。
@@ -454,6 +471,7 @@ func toConversationSummary(c db.Conversation) ConversationSummary {
 		ID:              c.ID,
 		Title:           title,
 		TitleOverridden: c.TitleOverridden,
+		Pinned:          c.Pinned,
 		MessageCount:    c.MessageCount,
 		CreatedAt:       c.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:       c.UpdatedAt.Format(time.RFC3339),

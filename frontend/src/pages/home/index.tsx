@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 
-import { ConversationService } from "@/../bindings/prompttool/internal/services"
-import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import {
+  CHAT_PANEL_LAYOUT,
+  useConversationStore,
   useRightPanelStore,
   useTabStore,
   useTemplateStore,
@@ -15,35 +15,42 @@ import {
   WORKSPACE_LAYOUT,
 } from "@/store"
 
+import { ChatPanel } from "./chat-panel"
+import { PanelHeader } from "./chat-panel/panel-header"
 import { confirmDestructive } from "./executor/confirm-dialog"
-import { HistorySidebar } from "./history-sidebar"
 import { StatusBar } from "./status-bar"
 import { TabBar } from "./tabs/tab-bar"
 import { TabContent } from "./tabs/tab-content"
 import { createTemplateWithDialog } from "./tabs/create-template-flow"
-import { TemplateSidebar } from "./template-sidebar"
+import { useChatSession } from "./use-chat-session"
 import { WorkspacePanel } from "./workspace-tree"
 
 /**
- * HomePage 现在只做四件事:
- *   1. 三栏容器
- *   2. 持有会话列表,供 HistorySidebar 使用
- *   3. 把 HistorySidebar / TemplateSidebar 的动作分派到 tabStore
- *   4. 用 rightPanelStore 决定右侧显示历史 / 模板 / 什么都不显示
- * 会话数据由每个 chat tab 的 useChatSession 自己持有;
- * 模板数据由 useTemplateStore 集中管理。
+ * HomePage 采用三栏布局:
+ *   [ 工作区 ] | [ Tab 编辑区 (file / template) ] | [ 右侧固定 ChatPanel ]
+ *
+ * - 工作区宽度由 useWorkspaceStore.width 持久化
+ * - ChatPanel 宽度由 useRightPanelStore.width 持久化
+ * - 两个可拖拽 handle 独立控制,与主流 AI 编辑器(Zed / Cursor)一致
+ * - 折叠工作区/ChatPanel 时对应面板不渲染
+ *
+ * 会话数据由全局 useChatSession 承载,activeConversationId 存于
+ * conversationStore,ChatPanel 顶栏 Popover 切换会话即切换全局指针。
  */
 export default function HomePage() {
-  const [conversations, setConversations] = useState<ConversationSummary[]>([])
-
-  const tabs = useTabStore((s) => s.tabs)
-  const activeTabId = useTabStore((s) => s.activeTabId)
-  const openChatTab = useTabStore((s) => s.openChatTab)
-  const openNewChatTab = useTabStore((s) => s.openNewChatTab)
-  const openTemplateTab = useTabStore((s) => s.openTemplateTab)
-  const updateTitle = useTabStore((s) => s.updateTitle)
-  const onConversationDeleted = useTabStore((s) => s.onConversationDeleted)
-  const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
+  // ---------- 全局 stores ----------
+  const conversations = useConversationStore((s) => s.conversations)
+  const activeConversationId = useConversationStore(
+    (s) => s.activeConversationId,
+  )
+  const setActiveConversationId = useConversationStore(
+    (s) => s.setActiveConversationId,
+  )
+  const loadConversations = useConversationStore((s) => s.load)
+  const renameConversation = useConversationStore((s) => s.rename)
+  const setPinnedConversation = useConversationStore((s) => s.setPinned)
+  const removeConversation = useConversationStore((s) => s.remove)
+  const clearAllConversations = useConversationStore((s) => s.clearAll)
 
   const templates = useTemplateStore((s) => s.templates)
   const loadTemplates = useTemplateStore((s) => s.load)
@@ -51,58 +58,32 @@ export default function HomePage() {
   const updateTemplate = useTemplateStore((s) => s.update)
   const clearAllTemplates = useTemplateStore((s) => s.clearAll)
 
-  const rightPanel = useRightPanelStore((s) => s.panel)
-  const showRightPanel = useRightPanelStore((s) => s.show)
+  const tabs = useTabStore((s) => s.tabs)
+  const activeTabId = useTabStore((s) => s.activeTabId)
+  const openTemplateTab = useTabStore((s) => s.openTemplateTab)
+  const updateTitle = useTabStore((s) => s.updateTitle)
+  const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
 
-  const [conversationsLoaded, setConversationsLoaded] = useState(false)
+  const chatCollapsed = useRightPanelStore((s) => s.collapsed)
+  const setChatCollapsed = useRightPanelStore((s) => s.setCollapsed)
+  const chatWidth = useRightPanelStore((s) => s.width)
+  const setChatWidth = useRightPanelStore((s) => s.setWidth)
 
-  const loadConversations = useCallback(async () => {
-    const list = await ConversationService.List()
-    setConversations(list || [])
-    setConversationsLoaded(true)
-  }, [])
-
+  // ---------- 初始加载 ----------
   useEffect(() => {
     void loadConversations()
     void loadTemplates()
   }, [loadConversations, loadTemplates])
 
-  // 启动流程:
-  //   1. 会话列表加载完成后,清理指向已删除会话的持久化 tab
-  //   2. 若清理后仍无 tab,才开一个空的新会话 tab
-  // 注意:React 18 StrictMode 下 effect 会执行两次,必须从 store 读最新状态,
-  // 不能依赖闭包里的 tabs,否则会创建两个"新会话"标签。
+  // 校正持久化的 activeConversationId:数据源加载完成后,若其不存在则清空
   useEffect(() => {
-    if (!conversationsLoaded) return
-    const validIds = new Set(conversations.map((c) => c.id))
-    const currentTabs = useTabStore.getState().tabs
-    currentTabs.forEach((t) => {
-      if (
-        t.kind === "chat" &&
-        t.conversationId != null &&
-        !validIds.has(t.conversationId)
-      ) {
-        onConversationDeleted(t.conversationId)
-      }
-    })
-    if (useTabStore.getState().tabs.length === 0) {
-      openNewChatTab()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationsLoaded])
+    if (!useConversationStore.getState().loaded) return
+    if (activeConversationId == null) return
+    const exists = conversations.some((c) => c.id === activeConversationId)
+    if (!exists) setActiveConversationId(null)
+  }, [conversations, activeConversationId, setActiveConversationId])
 
-  // 每次会话列表变化,同步一次 chat tab 的标题
-  useEffect(() => {
-    tabs.forEach((t) => {
-      if (t.kind !== "chat" || t.conversationId == null) return
-      const conv = conversations.find((c) => c.id === t.conversationId)
-      if (conv && conv.title && conv.title !== t.title) {
-        updateTitle(t.id, conv.title)
-      }
-    })
-  }, [conversations, tabs, updateTitle])
-
-  // 模板列表变化时同步 template tab 标题
+  // 会话/模板标题同步到 tab 标题(仅 template kind)
   useEffect(() => {
     tabs.forEach((t) => {
       if (t.kind !== "template" || t.templateId == null) return
@@ -113,59 +94,38 @@ export default function HomePage() {
     })
   }, [templates, tabs, updateTitle])
 
-  const activeConvId = useMemo(() => {
-    const active = tabs.find((t) => t.id === activeTabId)
-    return active && active.kind === "chat" ? active.conversationId : null
-  }, [tabs, activeTabId])
+  // ---------- 会话相关(顶栏 Popover 调用) ----------
+  const chatSession = useChatSession({
+    conversationId: activeConversationId,
+    onConversationCreated: (newId) => setActiveConversationId(newId),
+    onConversationsChanged: () => void loadConversations(),
+  })
 
-  const activeTemplateId = useMemo(() => {
-    const active = tabs.find((t) => t.id === activeTabId)
-    return active && active.kind === "template" ? active.templateId : null
-  }, [tabs, activeTabId])
+  const activeConv = useMemo(
+    () => conversations.find((c) => c.id === activeConversationId) ?? null,
+    [conversations, activeConversationId],
+  )
 
-  // -------- 会话侧操作 --------
   const handleSelectConversation = useCallback(
-    (id: number) => {
-      const conv = conversations.find((c) => c.id === id)
-      openChatTab(id, conv?.title || "新会话")
-    },
-    [conversations, openChatTab],
+    (id: number) => setActiveConversationId(id),
+    [setActiveConversationId],
   )
 
   const handleNewConversation = useCallback(() => {
-    openNewChatTab()
-  }, [openNewChatTab])
+    setActiveConversationId(null)
+  }, [setActiveConversationId])
 
   const handleDeleteConversation = useCallback(
-    async (id: number, e: React.MouseEvent) => {
-      e.stopPropagation()
+    async (id: number) => {
       const ok = await confirmDestructive({
         title: "删除会话",
         description: "将删除该会话及所有消息记录,确定继续?",
         destructiveLabel: "删除",
       })
-      if (ok) {
-        await ConversationService.Delete(id)
-        onConversationDeleted(id)
-        await loadConversations()
-      }
+      if (!ok) return
+      await removeConversation(id)
     },
-    [loadConversations, onConversationDeleted],
-  )
-
-  const handleRenameConversation = useCallback(
-    async (id: number, newTitle: string) => {
-      try {
-        await ConversationService.Rename({
-          conversationId: id,
-          title: newTitle,
-        })
-        await loadConversations()
-      } catch (err) {
-        console.error("Failed to rename conversation", err)
-      }
-    },
-    [loadConversations],
+    [removeConversation],
   )
 
   const handleClearAllConversations = useCallback(async () => {
@@ -175,33 +135,43 @@ export default function HomePage() {
       destructiveLabel: "清空",
     })
     if (!ok) return
-    for (const conv of conversations) {
-      await ConversationService.Delete(conv.id)
-      onConversationDeleted(conv.id)
-    }
-    await loadConversations()
-  }, [conversations, loadConversations, onConversationDeleted])
+    await clearAllConversations()
+  }, [clearAllConversations])
 
-  // -------- 模板侧操作 --------
-  const handleSelectTemplate = useCallback(
+  const handleClearMessages = useCallback(async () => {
+    await chatSession.clearMessages()
+  }, [chatSession])
+
+  const handleDeleteMessage = useCallback(
+    async (msgId: number) => {
+      const ok = await confirmDestructive({
+        title: "删除消息",
+        description: "将删除此消息,确定继续?",
+        destructiveLabel: "删除",
+      })
+      if (ok) await chatSession.deleteMessage(msgId)
+    },
+    [chatSession],
+  )
+
+  // ---------- 模板相关 ----------
+  const handleNewTemplate = useCallback(() => {
+    void createTemplateWithDialog()
+  }, [])
+
+  const handleEditTemplate = useCallback(
     (id: number) => {
       const tpl = templates.find((t) => t.id === id)
       openTemplateTab(id, tpl?.title || "未命名模板")
     },
-    [templates, openTemplateTab],
+    [openTemplateTab, templates],
   )
-
-  const handleNewTemplate = useCallback(() => {
-    // 新建模板通常发生在用户点了侧边栏的 "+"; 保持模板面板可见
-    showRightPanel("template")
-    void createTemplateWithDialog()
-  }, [showRightPanel])
 
   const handleRenameTemplate = useCallback(
     async (id: number, newTitle: string) => {
+      const tpl = templates.find((t) => t.id === id)
+      if (!tpl) return
       try {
-        const tpl = templates.find((t) => t.id === id)
-        if (!tpl) return
         await updateTemplate(id, newTitle, tpl.content)
       } catch (err) {
         console.error("Failed to rename template", err)
@@ -211,8 +181,7 @@ export default function HomePage() {
   )
 
   const handleDeleteTemplate = useCallback(
-    async (id: number, e: React.MouseEvent) => {
-      e.stopPropagation()
+    async (id: number) => {
       const ok = await confirmDestructive({
         title: "删除模板",
         description: "将删除该模板,确定继续?",
@@ -236,49 +205,61 @@ export default function HomePage() {
     ids.forEach((id) => onTemplateDeleted(id))
   }, [clearAllTemplates, onTemplateDeleted])
 
-  // -------- 供 ChatPanel 使用的模板回调:打开为主编辑区的 tab --------
-  const handleComposerCreateTemplate = useCallback(() => {
-    void createTemplateWithDialog()
-  }, [])
+  const activeTemplateId = useMemo(() => {
+    const active = tabs.find((t) => t.id === activeTabId)
+    return active && active.kind === "template" ? active.templateId : null
+  }, [tabs, activeTabId])
 
-  const handleComposerEditTemplate = useCallback(
-    (id: number) => {
-      const tpl = templates.find((t) => t.id === id)
-      openTemplateTab(id, tpl?.title || "未命名模板")
-    },
-    [openTemplateTab, templates],
-  )
-
-  const handleComposerDeleteTemplate = useCallback(
-    async (id: number) => {
-      await removeTemplate(id)
-      onTemplateDeleted(id)
-    },
-    [onTemplateDeleted, removeTemplate],
+  // ---------- 顶栏 ----------
+  const chatHeader = (
+    <PanelHeader
+      title={activeConv?.title ?? "新会话"}
+      conversations={conversations}
+      activeConvId={activeConversationId}
+      templates={templates}
+      activeTemplateId={activeTemplateId}
+      onNewConversation={handleNewConversation}
+      onSelectConversation={handleSelectConversation}
+      onDeleteConversation={handleDeleteConversation}
+      onRenameConversation={renameConversation}
+      onTogglePinConversation={setPinnedConversation}
+      onClearAllConversations={handleClearAllConversations}
+      onNewTemplate={handleNewTemplate}
+      onEditTemplate={handleEditTemplate}
+      onRenameTemplate={handleRenameTemplate}
+      onDeleteTemplate={handleDeleteTemplate}
+      onClearAllTemplates={handleClearAllTemplates}
+      onCollapse={() => setChatCollapsed(true)}
+    />
   )
 
   return (
     <div className="flex h-svh flex-col overflow-hidden border-t border-border">
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <MainSplit
-          rightPanel={rightPanel}
-          conversations={conversations}
-          activeConvId={activeConvId}
-          activeTemplateId={activeTemplateId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onDeleteConversation={handleDeleteConversation}
-          onRenameConversation={handleRenameConversation}
-          onClearAllConversations={handleClearAllConversations}
-          onSelectTemplate={handleSelectTemplate}
-          onNewTemplate={handleNewTemplate}
-          onRenameTemplate={handleRenameTemplate}
-          onDeleteTemplate={handleDeleteTemplate}
-          onClearAllTemplates={handleClearAllTemplates}
-          onConversationsChanged={loadConversations}
-          onComposerCreateTemplate={handleComposerCreateTemplate}
-          onComposerEditTemplate={handleComposerEditTemplate}
-          onComposerDeleteTemplate={handleComposerDeleteTemplate}
+        <MainLayout
+          chatCollapsed={chatCollapsed}
+          chatWidth={chatWidth}
+          setChatWidth={setChatWidth}
+          chatPanel={
+            <ChatPanel
+              messages={chatSession.messages}
+              onSend={chatSession.sendMessage}
+              onClear={handleClearMessages}
+              onDeleteMessage={handleDeleteMessage}
+              onEditMessage={chatSession.editMessage}
+              templates={chatSession.templates}
+              selectedTemplateIds={chatSession.selectedTemplateIds}
+              onToggleTemplate={chatSession.toggleTemplate}
+              onCreateTemplate={handleNewTemplate}
+              onEditTemplate={handleEditTemplate}
+              onDeleteTemplate={async (id) => {
+                await removeTemplate(id)
+                onTemplateDeleted(id)
+              }}
+              conversationTitle={activeConv?.title ?? ""}
+              header={chatHeader}
+            />
+          }
         />
       </div>
       <StatusBar />
@@ -286,67 +267,41 @@ export default function HomePage() {
   )
 }
 
-interface MainSplitProps {
-  rightPanel: "history" | "template" | null
-  conversations: ConversationSummary[]
-  activeConvId: number | null
-  activeTemplateId: number | null
-  onSelectConversation: (id: number) => void
-  onNewConversation: () => void
-  onDeleteConversation: (id: number, e: React.MouseEvent) => void
-  onRenameConversation: (id: number, newTitle: string) => void
-  onClearAllConversations: () => void
-  onSelectTemplate: (id: number) => void
-  onNewTemplate: () => void
-  onRenameTemplate: (id: number, newTitle: string) => void
-  onDeleteTemplate: (id: number, e: React.MouseEvent) => void
-  onClearAllTemplates: () => void
-  onConversationsChanged: () => Promise<void> | void
-  onComposerCreateTemplate: () => void
-  onComposerEditTemplate: (id: number) => void
-  onComposerDeleteTemplate: (id: number) => void
+interface MainLayoutProps {
+  chatCollapsed: boolean
+  chatWidth: number
+  setChatWidth: (w: number) => void
+  chatPanel: React.ReactNode
 }
 
 /**
- * MainSplit 负责三栏(工作区 / 内容区 / 右侧面板)之间的可拖拽分割。
- * 工作区宽度以像素存于 store,这里在挂载时按当前视口换算传给 react-resizable-panels,
- * onLayout 回写像素值,保证既能持久化又能与既有 store 兼容。
- * 折叠工作区时,不渲染对应 Panel 和 Handle。
- *
- * 右侧面板槽位:根据 rightPanel 二选一渲染 HistorySidebar / TemplateSidebar,
- * 与 Zed 一致 —— 同一物理位置,内容随按钮切换。
+ * 三栏布局:workspace | main tabs | chat panel
+ * 使用两个 ResizablePanelGroup 无法共存于同一层(react-resizable-panels 需要
+ * 同 group 内相邻),因此采用单 group + 三 Panel + 两 Handle 的方案。
+ * 折叠状态下对应 Panel 与 Handle 都不渲染。
  */
-function MainSplit(props: MainSplitProps) {
-  const {
-    rightPanel,
-    conversations,
-    activeConvId,
-    activeTemplateId,
-    onSelectConversation,
-    onNewConversation,
-    onDeleteConversation,
-    onRenameConversation,
-    onClearAllConversations,
-    onSelectTemplate,
-    onNewTemplate,
-    onRenameTemplate,
-    onDeleteTemplate,
-    onClearAllTemplates,
-    onConversationsChanged,
-  } = props
+function MainLayout({
+  chatCollapsed,
+  chatWidth,
+  setChatWidth,
+  chatPanel,
+}: MainLayoutProps) {
+  const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
+  const workspaceWidth = useWorkspaceStore((s) => s.width)
+  const setWorkspaceWidth = useWorkspaceStore((s) => s.setWidth)
 
-  const collapsed = useWorkspaceStore((s) => s.collapsed)
-  const width = useWorkspaceStore((s) => s.width)
-  const setWidth = useWorkspaceStore((s) => s.setWidth)
-  const togglePanel = useRightPanelStore((s) => s.toggle)
-
-  const templates = useTemplateStore((s) => s.templates)
-
-  // 初始工作区面板尺寸(像素)。仅在挂载时计算一次,避免拖动过程中被 store→px 循环回弹。
   const initialWorkspacePx = useMemo(() => {
     return Math.max(
       WORKSPACE_LAYOUT.MIN_WIDTH,
-      Math.min(width ?? 300, WORKSPACE_LAYOUT.MAX_WIDTH),
+      Math.min(workspaceWidth ?? 300, WORKSPACE_LAYOUT.MAX_WIDTH),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const initialChatPx = useMemo(() => {
+    return Math.max(
+      CHAT_PANEL_LAYOUT.MIN_WIDTH,
+      Math.min(chatWidth, CHAT_PANEL_LAYOUT.MAX_WIDTH),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -354,59 +309,27 @@ function MainSplit(props: MainSplitProps) {
   const mainContent = (
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <TabBar />
-      <TabContent
-        onConversationsChanged={onConversationsChanged}
-        onOpenHistory={() => togglePanel("history")}
-      />
+      <TabContent />
     </div>
   )
 
-  const rightSidebar =
-    rightPanel === "history" ? (
-      <HistorySidebar
-        conversations={conversations}
-        activeId={activeConvId}
-        onSelect={onSelectConversation}
-        onNew={onNewConversation}
-        onDelete={onDeleteConversation}
-        onRename={onRenameConversation}
-        onClearAll={onClearAllConversations}
-      />
-    ) : rightPanel === "template" ? (
-      <TemplateSidebar
-        templates={templates}
-        activeId={activeTemplateId}
-        onSelect={onSelectTemplate}
-        onNew={onNewTemplate}
-        onRename={onRenameTemplate}
-        onDelete={onDeleteTemplate}
-        onClearAll={onClearAllTemplates}
-      />
-    ) : null
-
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      {collapsed ? (
-        <>
-          {mainContent}
-          {rightSidebar}
-        </>
-      ) : (
-        <>
-          <ResizablePanelGroup
-            orientation="horizontal"
-            className="flex min-h-0 min-w-0 flex-1"
-          >
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="flex min-h-0 min-w-0 flex-1"
+      >
+        {!workspaceCollapsed && (
+          <>
             <ResizablePanel
               defaultSize={initialWorkspacePx}
               minSize={WORKSPACE_LAYOUT.MIN_WIDTH}
               maxSize={WORKSPACE_LAYOUT.MAX_WIDTH}
               groupResizeBehavior="preserve-pixel-size"
               onResize={(panelSize) => {
-                // v4 回调签名: { asPercentage, inPixels }
                 const px = Math.round(panelSize.inPixels)
                 if (!Number.isFinite(px) || px <= 0) return
-                if (Math.abs(px - width) >= 1) setWidth(px)
+                if (Math.abs(px - workspaceWidth) >= 1) setWorkspaceWidth(px)
               }}
               className="flex min-w-0"
             >
@@ -416,13 +339,36 @@ function MainSplit(props: MainSplitProps) {
               withHandle
               className="w-px bg-border hover:bg-primary/30"
             />
-            <ResizablePanel minSize="20%" className="flex min-w-0">
-              {mainContent}
+          </>
+        )}
+
+        <ResizablePanel minSize="20%" className="flex min-w-0">
+          {mainContent}
+        </ResizablePanel>
+
+        {!chatCollapsed && (
+          <>
+            <ResizableHandle
+              withHandle
+              className="w-px bg-border hover:bg-primary/30"
+            />
+            <ResizablePanel
+              defaultSize={initialChatPx}
+              minSize={CHAT_PANEL_LAYOUT.MIN_WIDTH}
+              maxSize={CHAT_PANEL_LAYOUT.MAX_WIDTH}
+              groupResizeBehavior="preserve-pixel-size"
+              onResize={(panelSize) => {
+                const px = Math.round(panelSize.inPixels)
+                if (!Number.isFinite(px) || px <= 0) return
+                if (Math.abs(px - chatWidth) >= 1) setChatWidth(px)
+              }}
+              className="flex min-w-0"
+            >
+              {chatPanel}
             </ResizablePanel>
-          </ResizablePanelGroup>
-          {rightSidebar}
-        </>
-      )}
+          </>
+        )}
+      </ResizablePanelGroup>
     </div>
   )
 }

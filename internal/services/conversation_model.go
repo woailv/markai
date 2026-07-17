@@ -5,10 +5,17 @@ type ConversationSummary struct {
 	ID              uint64 `json:"id"`
 	Title           string `json:"title"`
 	TitleOverridden bool   `json:"titleOverridden"`
+	Pinned          bool   `json:"pinned"`
 	MessageCount    int    `json:"messageCount"`
 	TemplateIDs     []uint `json:"templateIds"` // 该会话关联的模板集合
 	CreatedAt       string `json:"createdAt"` // RFC3339
 	UpdatedAt       string `json:"updatedAt"`
+}
+
+// SetPinnedInput 置顶/取消置顶入参。
+type SetPinnedInput struct {
+	ConversationID uint64 `json:"conversationId"`
+	Pinned         bool   `json:"pinned"`
 }
 
 // MessageDTO 单条消息的传输结构。

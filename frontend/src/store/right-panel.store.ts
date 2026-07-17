@@ -2,35 +2,75 @@ import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
 
 /**
- * 主页右侧面板的互斥切换。
+ * 右侧 ChatPanel 的布局状态。
  *
- * 与 Zed 一致:同一位置最多渲染一个面板,再次点击同一按钮 → 关闭。
- * 使用可判别 union 表达状态,避免多个布尔开关之间语义漂移。
+ * 与 Zed / Cursor 的右侧 AI 面板一致:
+ * - 固定在窗口右侧,宽度可拖拽调整
+ * - 支持折叠(整个面板收起,仅保留主编辑区)
+ *
+ * 历史/模板的切换不再放在这里,已下沉到 ChatPanel 顶栏的 Popover。
  */
-export type RightPanelKind = "history" | "template"
+export const CHAT_PANEL_LAYOUT = {
+  MIN_WIDTH: 320,
+  MAX_WIDTH: 720,
+  DEFAULT_WIDTH: 440,
+  COLLAPSED_WIDTH: 0,
+}
 
 export interface RightPanelStore {
-  panel: RightPanelKind | null
-  /** 点击某个面板按钮:若当前就是它则关闭,否则切到它。 */
-  toggle: (kind: RightPanelKind) => void
-  /** 强制显示某个面板(用于代码流程,如"从模板打开标签"后不希望改变现有状态)。 */
-  show: (kind: RightPanelKind) => void
-  close: () => void
+  /** 面板是否折叠(true = 隐藏 ChatPanel) */
+  collapsed: boolean
+  /** 展开态的像素宽度 */
+  width: number
+
+  setCollapsed: (v: boolean) => void
+  toggleCollapsed: () => void
+  setWidth: (w: number) => void
 }
+
+// 兼容旧签名:index.ts 里仍导出 RightPanelKind 类型,
+// 保留一个宽松的字符串联合以便暂未清理的调用点通过 TS 校验;
+// 实际逻辑已迁移到 collapsed / width。
+export type RightPanelKind = "history" | "template"
 
 export const useRightPanelStore = create<RightPanelStore>()(
   persist(
-    (set) => ({
-      panel: "history",
-      toggle: (kind) =>
-        set((state) => ({ panel: state.panel === kind ? null : kind })),
-      show: (kind) => set({ panel: kind }),
-      close: () => set({ panel: null }),
+    (set, get) => ({
+      collapsed: false,
+      width: CHAT_PANEL_LAYOUT.DEFAULT_WIDTH,
+
+      setCollapsed: (v) => {
+        if (get().collapsed === v) return
+        set({ collapsed: v })
+      },
+      toggleCollapsed: () => set({ collapsed: !get().collapsed }),
+      setWidth: (w) => {
+        const clamped = Math.max(
+          CHAT_PANEL_LAYOUT.MIN_WIDTH,
+          Math.min(CHAT_PANEL_LAYOUT.MAX_WIDTH, Math.round(w)),
+        )
+        if (get().width === clamped) return
+        set({ width: clamped })
+      },
     }),
     {
       name: "prompttool-right-panel",
       storage: createJSONStorage(() => localStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted: unknown, version) => {
+        // v1 → v2:清理旧的 panel 字段
+        if (version < 2 && persisted && typeof persisted === "object") {
+          const rec = persisted as Record<string, unknown>
+          return {
+            collapsed: false,
+            width:
+              typeof rec.width === "number"
+                ? rec.width
+                : CHAT_PANEL_LAYOUT.DEFAULT_WIDTH,
+          }
+        }
+        return persisted as RightPanelStore
+      },
     },
   ),
 )

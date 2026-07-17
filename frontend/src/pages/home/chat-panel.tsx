@@ -66,6 +66,8 @@ interface ChatPanelProps {
   onEditTemplate: (id: number) => void
   onDeleteTemplate: (id: number) => void
   conversationTitle?: string
+  /** 顶栏槽位:调用方注入 PanelHeader 组件,ChatPanel 只负责布局位置 */
+  header?: React.ReactNode
 }
 
 export function ChatPanel({
@@ -80,6 +82,7 @@ export function ChatPanel({
   onCreateTemplate,
   onEditTemplate,
   onDeleteTemplate,
+  header,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
@@ -177,6 +180,7 @@ export function ChatPanel({
 
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
+      {header}
       <ChatAreaContextMenu
         messages={messages}
         templates={templates}

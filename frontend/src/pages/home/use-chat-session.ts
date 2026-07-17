@@ -6,7 +6,7 @@ import {
 } from "@/../bindings/prompttool/internal/services"
 
 import { encodeTemplateToken } from "@/components/rich-editor"
-import { useTemplateStore } from "@/store"
+import { useConversationStore, useTemplateStore } from "@/store"
 
 import { COMMAND_TAG_DETECT_RE, parseCommands } from "./executor/command-parser"
 import { executeCommands } from "./executor/command-executor"
@@ -175,6 +175,10 @@ export function useChatSession({
 
         if (res.createdNew) {
           setCurrentConvId(res.conversationId)
+          // 立即同步到全局 activeConversationId,右侧面板/持久化跟随
+          useConversationStore
+            .getState()
+            .setActiveConversationId(res.conversationId)
           onConversationCreated?.(res.conversationId)
           if (selectedTemplateIds.size > 0) {
             await ConversationService.SetTemplates({
@@ -183,6 +187,8 @@ export function useChatSession({
             })
           }
         }
+        // 会话列表在 store 内刷新(排序/标题变化),同时透传给外部回调
+        void useConversationStore.getState().load()
         onConversationsChanged?.()
 
         setMessages((prev) =>
@@ -216,6 +222,7 @@ export function useChatSession({
   const clearMessages = useCallback(async () => {
     if (currentConvId != null) {
       await ConversationService.ClearMessages(currentConvId)
+      void useConversationStore.getState().load()
       onConversationsChanged?.()
     }
     setMessages([])
@@ -225,6 +232,7 @@ export function useChatSession({
     async (msgId: number) => {
       await ConversationService.DeleteMessage(msgId)
       setMessages((prev) => prev.filter((m) => m.id !== msgId))
+      void useConversationStore.getState().load()
       onConversationsChanged?.()
     },
     [onConversationsChanged],

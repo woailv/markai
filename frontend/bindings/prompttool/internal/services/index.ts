@@ -50,6 +50,7 @@ export type {
     RenameConversationInput,
     RenameInput,
     RenameResult,
+    SetPinnedInput,
     SetTemplatesInput,
     SetWorkspaceRootInput,
     UndoBatchResult,

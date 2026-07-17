@@ -4,7 +4,6 @@ import {
   AlertTriangle,
   FileCode2,
   FileText,
-  MessagesSquare,
   Pin,
   X,
 } from "lucide-react"
@@ -51,7 +50,6 @@ export function SortableTabItem(props: TabItemProps) {
 }
 
 function iconFor(tab: Tab) {
-  if (tab.kind === "chat") return MessagesSquare
   if (tab.kind === "template") return FileCode2
   return FileText
 }
@@ -141,7 +139,7 @@ export function TabItem({ tab, active, onActivate, onClose }: TabItemProps) {
             invalid && "text-destructive/80 line-through decoration-dotted",
           )}
         >
-          {tab.title || (tab.kind === "chat" ? "新会话" : "未命名")}
+          {tab.title || "未命名"}
         </span>
         {pinned && !dirty && (
           <Pin className="h-3 w-3 shrink-0 text-primary/70" />

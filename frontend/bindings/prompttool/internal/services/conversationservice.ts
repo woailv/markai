@@ -52,7 +52,7 @@ export function Get(id: number): $CancellablePromise<$models.ConversationDetail 
 }
 
 /**
- * List 返回会话摘要列表,按 updatedAt 倒序。
+ * List 返回会话摘要列表,置顶项排最前,其后按 updatedAt 倒序。
  */
 export function List(): $CancellablePromise<$models.ConversationSummary[] | null> {
     return $Call.ByID(4052571346);
@@ -63,6 +63,13 @@ export function List(): $CancellablePromise<$models.ConversationSummary[] | null
  */
 export function Rename($in: $models.RenameConversationInput): $CancellablePromise<void> {
     return $Call.ByID(502248480, $in);
+}
+
+/**
+ * SetPinned 切换会话置顶状态。
+ */
+export function SetPinned($in: $models.SetPinnedInput): $CancellablePromise<void> {
+    return $Call.ByID(3478670872, $in);
 }
 
 /**
