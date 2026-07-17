@@ -115,7 +115,15 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       watchStatus: "idle",
       watchReason: undefined,
 
-      setRoot: (root) =>
+      setRoot: (root) => {
+        // 幂等保护:根目录未变化时,不清空 expanded / nodes / 选中态。
+        // 折叠工作区面板后重新挂载时,useWorkspaceEvents 会以持久化的 root
+        // 再次调用 SetRoot,若无此保护,已展开的多级目录会全部被折叠。
+        const current = get().root
+        if (current === root) {
+          if (!current) set({ root })
+          return
+        }
         set({
           root,
           rootChildren: [],
@@ -124,7 +132,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           selectedPath: null,
           selectedPaths: new Set(),
           anchorPath: null,
-        }),
+        })
+      },
 
       setRootChildren: (paths) => set({ rootChildren: paths }),
 
