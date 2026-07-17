@@ -77,19 +77,6 @@ export function HistoryPopover({
               className="h-7 w-full rounded-md border bg-background pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
             />
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setOpen(false)
-              onNew()
-            }}
-            className="h-7 gap-1 px-2 text-xs"
-            title="新建会话"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            新建
-          </Button>
         </div>
 
         <div className="max-h-[420px] min-h-0 flex-1 overflow-y-auto p-1.5">
