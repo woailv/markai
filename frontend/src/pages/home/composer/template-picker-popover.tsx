@@ -1,4 +1,10 @@
-import { FileText, Plus, Search, SquareArrowOutUpRight } from "lucide-react"
+import {
+  FileText,
+  Plus,
+  Search,
+  SquareArrowOutUpRight,
+  Trash2,
+} from "lucide-react"
 import { useMemo, useState, type ReactElement } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -29,6 +35,7 @@ export function TemplatePickerPopover({
   onToggle,
   onCreate,
   onEdit,
+  onDelete,
   children,
 }: TemplatePickerPopoverProps) {
   const [open, setOpen] = useState(false)
@@ -158,6 +165,22 @@ export function TemplatePickerPopover({
                           )}
                         >
                           <SquareArrowOutUpRight className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            onDelete(tpl.id)
+                          }}
+                          title="删除模板"
+                          className={cn(
+                            "flex h-5 w-5 items-center justify-center rounded text-muted-foreground",
+                            "opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive",
+                            "group-hover:opacity-100 focus:opacity-100",
+                          )}
+                        >
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>

@@ -442,16 +442,7 @@ function UserBubble({
         <User className="h-3.5 w-3.5" />
       </div>
 
-      <div
-        className={cn(
-          "flex min-w-0 flex-col items-end gap-1",
-          // 编辑态放宽宽度上限,避免 min-width 撑破布局;
-          // 只读态保留原有 78% - 8rem 的紧凑气泡宽度。
-          editing
-            ? "w-full max-w-[calc(100%-2.5rem)]"
-            : "max-w-[calc(78%-8rem)]",
-        )}
-      >
+      <div className="flex min-w-0 flex-1 flex-col items-end gap-1 pl-32">
         <div
           className={cn(
             "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",

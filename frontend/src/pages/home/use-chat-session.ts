@@ -44,24 +44,6 @@ export function useChatSession({
     conversationId,
   )
 
-  // 当外部 conversationId 变化(理论上不会,tab 用 key 隔离),重置一次
-  useEffect(() => {
-    setCurrentConvId(conversationId)
-  }, [conversationId])
-
-  // 模板列表变化时,剔除 selectedTemplateIds 中已被删除的项。
-  useEffect(() => {
-    setSelectedTemplateIds((prev) => {
-      if (prev.size === 0) return prev
-      const existing = new Set(templates.map((t) => t.id))
-      const next = new Set<number>()
-      prev.forEach((id) => {
-        if (existing.has(id)) next.add(id)
-      })
-      return next.size === prev.size ? prev : next
-    })
-  }, [templates])
-
   const loadConversation = useCallback(
     async (id: number) => {
       const detail = await ConversationService.Get(id)
@@ -85,12 +67,34 @@ export function useChatSession({
     [],
   )
 
-  // 初次挂载:确保模板 store 已加载 + (若有 convId)加载会话
+  // 外部 conversationId 变化时(顶栏 Popover 切换会话 / 点击"新建会话"),
+  // 同步内部镜像并加载对应会话的消息;为 null 时重置为空会话。
   useEffect(() => {
-    void loadTemplatesFromStore()
-    if (conversationId != null) {
+    setCurrentConvId(conversationId)
+    if (conversationId == null) {
+      setMessages([])
+      setSelectedTemplateIds(new Set())
+    } else {
       void loadConversation(conversationId)
     }
+  }, [conversationId, loadConversation])
+
+  // 模板列表变化时,剔除 selectedTemplateIds 中已被删除的项。
+  useEffect(() => {
+    setSelectedTemplateIds((prev) => {
+      if (prev.size === 0) return prev
+      const existing = new Set(templates.map((t) => t.id))
+      const next = new Set<number>()
+      prev.forEach((id) => {
+        if (existing.has(id)) next.add(id)
+      })
+      return next.size === prev.size ? prev : next
+    })
+  }, [templates])
+
+  // 初次挂载:确保模板 store 已加载。会话加载由上面的 conversationId 副作用统一处理。
+  useEffect(() => {
+    void loadTemplatesFromStore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

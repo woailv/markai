@@ -55,17 +55,13 @@ export default function HomePage() {
   const templates = useTemplateStore((s) => s.templates)
   const loadTemplates = useTemplateStore((s) => s.load)
   const removeTemplate = useTemplateStore((s) => s.remove)
-  const updateTemplate = useTemplateStore((s) => s.update)
-  const clearAllTemplates = useTemplateStore((s) => s.clearAll)
 
   const tabs = useTabStore((s) => s.tabs)
-  const activeTabId = useTabStore((s) => s.activeTabId)
   const openTemplateTab = useTabStore((s) => s.openTemplateTab)
   const updateTitle = useTabStore((s) => s.updateTitle)
   const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
 
   const chatCollapsed = useRightPanelStore((s) => s.collapsed)
-  const setChatCollapsed = useRightPanelStore((s) => s.setCollapsed)
   const chatWidth = useRightPanelStore((s) => s.width)
   const setChatWidth = useRightPanelStore((s) => s.setWidth)
 
@@ -167,69 +163,18 @@ export default function HomePage() {
     [openTemplateTab, templates],
   )
 
-  const handleRenameTemplate = useCallback(
-    async (id: number, newTitle: string) => {
-      const tpl = templates.find((t) => t.id === id)
-      if (!tpl) return
-      try {
-        await updateTemplate(id, newTitle, tpl.content)
-      } catch (err) {
-        console.error("Failed to rename template", err)
-      }
-    },
-    [templates, updateTemplate],
-  )
-
-  const handleDeleteTemplate = useCallback(
-    async (id: number) => {
-      const ok = await confirmDestructive({
-        title: "删除模板",
-        description: "将删除该模板,确定继续?",
-        destructiveLabel: "删除",
-      })
-      if (!ok) return
-      await removeTemplate(id)
-      onTemplateDeleted(id)
-    },
-    [onTemplateDeleted, removeTemplate],
-  )
-
-  const handleClearAllTemplates = useCallback(async () => {
-    const ok = await confirmDestructive({
-      title: "清空所有模板",
-      description: "将删除所有模板,确定继续?",
-      destructiveLabel: "清空",
-    })
-    if (!ok) return
-    const ids = await clearAllTemplates()
-    ids.forEach((id) => onTemplateDeleted(id))
-  }, [clearAllTemplates, onTemplateDeleted])
-
-  const activeTemplateId = useMemo(() => {
-    const active = tabs.find((t) => t.id === activeTabId)
-    return active && active.kind === "template" ? active.templateId : null
-  }, [tabs, activeTabId])
-
   // ---------- 顶栏 ----------
   const chatHeader = (
     <PanelHeader
       title={activeConv?.title ?? "新会话"}
       conversations={conversations}
       activeConvId={activeConversationId}
-      templates={templates}
-      activeTemplateId={activeTemplateId}
       onNewConversation={handleNewConversation}
       onSelectConversation={handleSelectConversation}
       onDeleteConversation={handleDeleteConversation}
       onRenameConversation={renameConversation}
       onTogglePinConversation={setPinnedConversation}
       onClearAllConversations={handleClearAllConversations}
-      onNewTemplate={handleNewTemplate}
-      onEditTemplate={handleEditTemplate}
-      onRenameTemplate={handleRenameTemplate}
-      onDeleteTemplate={handleDeleteTemplate}
-      onClearAllTemplates={handleClearAllTemplates}
-      onCollapse={() => setChatCollapsed(true)}
     />
   )
 

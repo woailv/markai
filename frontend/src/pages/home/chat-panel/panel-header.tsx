@@ -1,23 +1,14 @@
-import {
-  ChevronRight,
-  FileCode2,
-  MessagesSquare,
-  Plus,
-} from "lucide-react"
+import { MessagesSquare, Plus } from "lucide-react"
 
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
 import { cn } from "@/lib/utils"
 
-import type { Template } from "../types"
 import { HistoryPopover } from "./history-popover"
-import { TemplateManagerPopover } from "./template-manager-popover"
 
 interface PanelHeaderProps {
   title: string
   conversations: ConversationSummary[]
   activeConvId: number | null
-  templates: Template[]
-  activeTemplateId: number | null
 
   onNewConversation: () => void
   onSelectConversation: (id: number) => void
@@ -25,14 +16,6 @@ interface PanelHeaderProps {
   onRenameConversation: (id: number, newTitle: string) => void
   onTogglePinConversation: (id: number, pinned: boolean) => void
   onClearAllConversations: () => void
-
-  onNewTemplate: () => void
-  onEditTemplate: (id: number) => void
-  onRenameTemplate: (id: number, newTitle: string) => void
-  onDeleteTemplate: (id: number) => void
-  onClearAllTemplates: () => void
-
-  onCollapse: () => void
 }
 
 /**
@@ -43,20 +26,12 @@ export function PanelHeader({
   title,
   conversations,
   activeConvId,
-  templates,
-  activeTemplateId,
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
   onRenameConversation,
   onTogglePinConversation,
   onClearAllConversations,
-  onNewTemplate,
-  onEditTemplate,
-  onRenameTemplate,
-  onDeleteTemplate,
-  onClearAllTemplates,
-  onCollapse,
 }: PanelHeaderProps) {
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b bg-muted/30 px-2">
@@ -84,28 +59,8 @@ export function PanelHeader({
           </ToolbarButton>
         </HistoryPopover>
 
-        <TemplateManagerPopover
-          templates={templates}
-          activeTemplateId={activeTemplateId}
-          onEdit={onEditTemplate}
-          onNew={onNewTemplate}
-          onRename={onRenameTemplate}
-          onDelete={onDeleteTemplate}
-          onClearAll={onClearAllTemplates}
-        >
-          <ToolbarButton title="模板管理">
-            <FileCode2 className="h-3.5 w-3.5" />
-          </ToolbarButton>
-        </TemplateManagerPopover>
-
         <ToolbarButton title="新建会话" onClick={onNewConversation}>
           <Plus className="h-3.5 w-3.5" />
-        </ToolbarButton>
-
-        <div className="mx-0.5 h-4 w-px bg-border" />
-
-        <ToolbarButton title="收起面板" onClick={onCollapse}>
-          <ChevronRight className="h-3.5 w-3.5" />
         </ToolbarButton>
       </div>
     </div>
