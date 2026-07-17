@@ -244,11 +244,7 @@ function MainLayout({
   }, [])
 
   const initialChatPx = useMemo(() => {
-    return Math.max(
-      CHAT_PANEL_LAYOUT.MIN_WIDTH,
-      Math.min(chatWidth, CHAT_PANEL_LAYOUT.MAX_WIDTH),
-    )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return Math.max(CHAT_PANEL_LAYOUT.MIN_WIDTH, chatWidth)
   }, [])
 
   const mainContent = (
@@ -287,7 +283,7 @@ function MainLayout({
           </>
         )}
 
-        <ResizablePanel minSize="20%" className="flex min-w-0">
+        <ResizablePanel minSize={48} className="flex min-w-0">
           {mainContent}
         </ResizablePanel>
 
@@ -300,7 +296,6 @@ function MainLayout({
             <ResizablePanel
               defaultSize={initialChatPx}
               minSize={CHAT_PANEL_LAYOUT.MIN_WIDTH}
-              maxSize={CHAT_PANEL_LAYOUT.MAX_WIDTH}
               groupResizeBehavior="preserve-pixel-size"
               onResize={(panelSize) => {
                 const px = Math.round(panelSize.inPixels)
