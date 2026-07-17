@@ -155,6 +155,12 @@ export const editableTheme: Extension = EditorView.theme({
   ".cm-placeholder": {
     color: "#9ca3af !important",
   },
+  // 保证 .cm-cursor 始终有非零尺寸,避免 IME 在 caret rect 为空时
+  // 把候选框定位到屏幕 (0,0)。
+  ".cm-cursor, .cm-cursor-primary": {
+    borderLeftWidth: "1px",
+    minHeight: "1em",
+  },
 })
 
 /**

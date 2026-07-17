@@ -229,7 +229,12 @@ export function RichEditor({
     fileTokens?.allowDrop,
     templateTokens?.enabled,
     extraExtensions,
-    onSubmit,
+    // 只关心 onSubmit 是否存在,不关心函数引用本身。
+    // 真正的调用通过 submitRef 转发,避免父组件每次 render 都
+    // 触发 reconfigure —— 在 IME composition 期间 reconfigure
+    // 会短暂让 .cm-cursor 的 rect 变为 (0,0),导致输入法候选框
+    // 飘到屏幕左上角。
+    !!onSubmit,
   ])
 
   // 初始化 / 销毁
@@ -253,12 +258,36 @@ export function RichEditor({
   }, [])
 
   // 扩展热更新
+  //
+  // 关键点:如果当前正处于 IME composition(view.composing === true),
+  // 立即 reconfigure 会让 CodeMirror 重建 selection layer,.cm-cursor
+  // 在极短时间内 getBoundingClientRect() 返回 (0,0,0,0),
+  // 输入法拿到这个空 rect 后会把候选框定位到屏幕左上角。
+  // 因此在 composition 期间延迟到 compositionend 再应用。
   useEffect(() => {
     const view = viewRef.current
     if (!view) return
-    view.dispatch({
-      effects: extCompartment.current.reconfigure(extensions),
-    })
+
+    const apply = () => {
+      view.dispatch({
+        effects: extCompartment.current.reconfigure(extensions),
+      })
+    }
+
+    if (view.composing) {
+      const dom = view.contentDOM
+      const onEnd = () => {
+        dom.removeEventListener("compositionend", onEnd)
+        // 等一帧让浏览器完成 composition 收尾
+        requestAnimationFrame(apply)
+      }
+      dom.addEventListener("compositionend", onEnd)
+      return () => {
+        dom.removeEventListener("compositionend", onEnd)
+      }
+    }
+
+    apply()
   }, [extensions])
 
   // 同步受控 value(避免与用户键入抖动:仅当外部值与文档不一致时才写回)
