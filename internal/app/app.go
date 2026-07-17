@@ -51,6 +51,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		&db.SnapshotBatch{},
 		&db.FileSnapshot{},
 		&services.RecentItem{},
+		&services.WindowSetting{},
 	); err != nil {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close db after migrate failure", "err", closeErr)
@@ -104,8 +105,30 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		registry.Recent.SetEmitter(emitter)
 	}
 
-	mainWin := window.NewMain(wailsApp, config.DefaultWindow())
+	// 先读取持久化的置顶状态,用于构造窗口时应用初始值。
+	// 读取失败时降级为 false,并记录日志,不阻塞启动。
+	alwaysOnTop := false
+	if registry.Window != nil {
+		if v, err := registry.Window.LoadPersistedAlwaysOnTop(); err != nil {
+			logger.Error("load persisted always-on-top", "err", err)
+		} else {
+			alwaysOnTop = v
+		}
+	}
+
+	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop)
 	registerFilesDropForward(wailsApp, mainWin, logger)
+
+	// 注入置顶设置器与事件推送。setter 通过闭包捕获主窗口,
+	// 使 WindowService 无需感知 Wails 类型。
+	if registry.Window != nil {
+		registry.Window.SetEmitter(emitter)
+		registry.Window.SetSetter(func(enabled bool) {
+			if mainWin != nil {
+				mainWin.SetAlwaysOnTop(enabled)
+			}
+		})
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	StartTimeTicker(ctx, wailsApp)

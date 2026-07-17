@@ -10,16 +10,20 @@ import (
 // 开启 EnableFileDrop 以启用 native 文件拖放,
 // 由此可通过 WindowFilesDropped 事件拿到文件绝对路径。
 //
+// alwaysOnTop 为窗口初始置顶状态,由 app 层从持久化配置读取后传入,
+// 以便应用启动时即恢复上次的置顶偏好。
+//
 // 重要:Wails v3 alpha 里,只有带 `data-file-drop-target` 属性的
 // DOM 元素上的拖放才会触发 FilesDropped 事件。前端拖放目标区域
 // 必须在容器上加该 data 属性,否则事件不会触发。
-func NewMain(app *application.App, cfg config.WindowConfig) *application.WebviewWindow {
+func NewMain(app *application.App, cfg config.WindowConfig, alwaysOnTop bool) *application.WebviewWindow {
 	return app.Window.NewWithOptions(application.WebviewWindowOptions{
 		DevToolsEnabled: true,
 		Title:           cfg.Title,
 		Width:           cfg.Width,
 		Height:          cfg.Height,
 		EnableFileDrop:  true,
+		AlwaysOnTop:     alwaysOnTop,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,

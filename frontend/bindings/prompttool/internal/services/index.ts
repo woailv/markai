@@ -8,6 +8,7 @@ import * as GreetService from "./greetservice.js";
 import * as PromptTemplateService from "./prompttemplateservice.js";
 import * as RecentService from "./recentservice.js";
 import * as SnapshotService from "./snapshotservice.js";
+import * as WindowService from "./windowservice.js";
 import * as WorkspaceService from "./workspaceservice.js";
 export {
     ConversationService,
@@ -17,10 +18,13 @@ export {
     PromptTemplateService,
     RecentService,
     SnapshotService,
+    WindowService,
     WorkspaceService
 };
 
 export type {
+    AlwaysOnTopSetter,
+    AlwaysOnTopState,
     AppendMessageInput,
     AppendMessageResult,
     BatchStatus,
@@ -50,6 +54,7 @@ export type {
     RenameConversationInput,
     RenameInput,
     RenameResult,
+    SetAlwaysOnTopInput,
     SetPinnedInput,
     SetTemplatesInput,
     SetWorkspaceRootInput,
