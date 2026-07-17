@@ -9,10 +9,18 @@ import {
   DialogService,
   WorkspaceService,
 } from "@/../bindings/prompttool/internal/services"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore } from "@/store"
 
-import { ConfirmDialog } from "./confirm-dialog"
 import { WorkspaceContextMenu } from "./context-menu"
 import {
   deletePaths,
@@ -350,18 +358,35 @@ function TreeArea() {
           onRequestDelete={(paths) => setDeleteTargets(paths)}
         />
       )}
-      <ConfirmDialog
+      <AlertDialog
         open={!!deleteTargets}
-        title="确认删除"
-        tone="danger"
-        confirmText="删除"
-        loading={deleting}
-        description={deleteDescription}
-        onConfirm={confirmDelete}
-        onCancel={() => {
-          if (!deleting) setDeleteTargets(null)
+        onOpenChange={(o) => {
+          if (!o && !deleting) setDeleteTargets(null)
         }}
-      />
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className="text-sm text-muted-foreground">
+            {deleteDescription}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              onClick={(e) => {
+                // 阻止默认关闭:等 confirmDelete 完成后再由自身清空 deleteTargets
+                e.preventDefault()
+                void confirmDelete()
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "删除中…" : "删除"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

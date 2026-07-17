@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -24,7 +25,16 @@ import {
   type RichEditorHandle,
   documentToPlainText,
 } from "@/components/rich-editor"
-import { Button } from "@/components/ui/button"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -32,11 +42,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
 import { AssistantMessage } from "./assistant/assistant-message"
@@ -86,6 +91,22 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
+  const [pendingDeleteMsgId, setPendingDeleteMsgId] = useState<number | null>(
+    null,
+  )
+
+  const pendingDeleteMsg = useMemo(
+    () =>
+      pendingDeleteMsgId !== null
+        ? messages.find((m) => m.id === pendingDeleteMsgId) ?? null
+        : null,
+    [messages, pendingDeleteMsgId],
+  )
+
+  const handleRequestDeleteMessage = useCallback(
+    (id: number) => setPendingDeleteMsgId(id),
+    [],
+  )
 
   // 用户手动上滚时,暂停自动跟随;回到底部区间(阈值 32px)时恢复
   useEffect(() => {
@@ -206,7 +227,9 @@ export function ChatPanel({
                         key={msg.id}
                         msg={msg}
                         isGrouped={isGrouped}
-                        onDelete={onDeleteMessage}
+                        onDelete={
+                          onDeleteMessage ? handleRequestDeleteMessage : undefined
+                        }
                         onEdit={onEditMessage}
                         templates={templates}
                       />
@@ -218,7 +241,9 @@ export function ChatPanel({
                       msg={msg}
                       isGrouped={isGrouped}
                       isGroupedNext={isGroupedNext}
-                      onDelete={onDeleteMessage}
+                      onDelete={
+                        onDeleteMessage ? handleRequestDeleteMessage : undefined
+                      }
                       onEdit={onEditMessage}
                       templates={templates}
                     />
@@ -243,6 +268,37 @@ export function ChatPanel({
           />
         </div>
       </div>
+
+      <AlertDialog
+        open={pendingDeleteMsgId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingDeleteMsgId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除消息</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定要删除这条{pendingDeleteMsg?.role === "user" ? "用户" : "助手"}
+              消息吗?此操作无法撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingDeleteMsgId !== null && onDeleteMessage) {
+                  onDeleteMessage(pendingDeleteMsgId)
+                }
+                setPendingDeleteMsgId(null)
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }
@@ -333,50 +389,31 @@ function ChatAreaContextMenu({
         </ContextMenuContent>
       </ContextMenu>
 
-      {/* 清空确认 Popover:锚点为屏幕中心的隐形按钮 */}
-      <Popover open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <PopoverTrigger
-          render={
-            <button
-              type="button"
-              tabIndex={-1}
-              aria-hidden
-              className="pointer-events-none fixed left-1/2 top-1/2 h-0 w-0 -translate-x-1/2 -translate-y-1/2 opacity-0"
-            />
-          }
-        />
-        <PopoverContent align="center" className="w-64 p-3">
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium">清空会话</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                清空后无法恢复,确定继续?
-              </p>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmOpen(false)}
-              >
-                取消
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={() => {
-                  onClear()
-                  setConfirmOpen(false)
-                }}
-              >
-                清空
-              </Button>
-            </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>清空会话</AlertDialogTitle>
+            <AlertDialogDescription>
+              清空后无法恢复,确定继续?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onClear()
+                setConfirmOpen(false)
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              清空
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
