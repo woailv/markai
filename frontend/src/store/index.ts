@@ -24,4 +24,7 @@ export type { TemplateStore } from "./template.store"
 export { useRightPanelStore, CHAT_PANEL_LAYOUT } from "./right-panel.store"
 export type { RightPanelKind, RightPanelStore } from "./right-panel.store"
 
+export { useWindowStore, subscribeWindowEvents } from "./window.store"
+export type { WindowStore } from "./window.store"
+
 export * from "./compose-settings.store"
