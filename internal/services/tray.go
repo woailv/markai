@@ -112,7 +112,9 @@ func (s *TrayService) EnableTray() error {
 		s.app.Quit()
 	})
 	tray.SetMenu(menu)
-	tray.AttachWindow(s.window).WindowOffset(2)
+	// WindowOffset 控制附着窗口与托盘图标之间的间距。设为 0 使窗口
+	// 底边紧贴任务栏顶边,避免关闭后再次点击托盘图标唤出时出现缝隙。
+	tray.AttachWindow(s.window).WindowOffset(0)
 
 	// 拦截关闭:关闭按钮转为隐藏窗口,保持后台运行。
 	s.unhook = s.window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
@@ -210,10 +212,15 @@ func (s *TrayService) positionBottomRightLocked() {
 	if err != nil || screen == nil {
 		return
 	}
-	const margin = 8
+	// 右侧留少量视觉余量,底部与任务栏顶边完全贴齐 —— 底部若也留
+	// margin,会与系统状态栏之间出现一条明显缝隙,视觉上不连贯。
+	const (
+		marginRight  = 8
+		marginBottom = 0
+	)
 	width, height := s.window.Size()
 	// WorkArea 已排除任务栏区域,右下角坐标即工作区右下减去窗口尺寸。
-	x := screen.WorkArea.X + screen.WorkArea.Width - width - margin
-	y := screen.WorkArea.Y + screen.WorkArea.Height - height - margin
+	x := screen.WorkArea.X + screen.WorkArea.Width - width - marginRight
+	y := screen.WorkArea.Y + screen.WorkArea.Height - height - marginBottom
 	s.window.SetPosition(x, y)
 }

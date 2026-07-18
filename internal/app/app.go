@@ -6,13 +6,13 @@ import (
 	"io/fs"
 	"log/slog"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
-
 	"prompttool/internal/config"
 	"prompttool/internal/db"
 	"prompttool/internal/services"
 	"prompttool/internal/window"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // App 封装 Wails application 及其依赖,便于集中管理生命周期。
@@ -100,9 +100,20 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 			},
 		},
 	})
-	// 监听应用启动完成事件
-	unsubFunc := wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
-
+	// 监听应用启动完成事件。托盘模式启动时,在此处唤出托盘窗口
+	// —— 必须等到 ApplicationStarted 之后,窗口的原生句柄才真正
+	// 存在,提早调用 Show 会被 Wails 吞掉,表现为窗口不出现。
+	_ = wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
+		if !startInTray || registry.Tray == nil {
+			return
+		}
+		if err := registry.Tray.ShowWindow(); err != nil {
+			logger.Error("show tray window on startup", "err", err)
+			return
+		}
+		if registry.Window != nil {
+			registry.Window.SetInitialVisibility(true)
+		}
 	})
 
 	if registry.Dialog != nil {
@@ -173,6 +184,9 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 			registry.Tray.SetPersister(registry.Window.SavePersistedTrayMode)
 		}
 		if startInTray {
+			// 只在这里创建托盘图标 / 注册关闭拦截 / 预置窗口位置。
+			// 真正的"显示托盘窗口"动作放到 ApplicationStarted 回调里,
+			// 因为此刻窗口原生资源尚未就绪,立即 Show 无效。
 			if err := registry.Tray.EnableTray(); err != nil {
 				logger.Error("enable tray on startup", "err", err)
 			}
