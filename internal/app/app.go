@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"prompttool/internal/config"
 	"prompttool/internal/db"
@@ -98,6 +99,10 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 				window.OpenDevTools()
 			},
 		},
+	})
+	// 监听应用启动完成事件
+	unsubFunc := wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
+
 	})
 
 	if registry.Dialog != nil {
