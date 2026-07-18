@@ -23,14 +23,19 @@ import (
 // DOM 元素上的拖放才会触发 FilesDropped 事件。前端拖放目标区域
 // 必须在容器上加该 data 属性,否则事件不会触发。
 func NewMain(app *application.App, cfg config.WindowConfig, alwaysOnTop bool, startInTray bool) *application.WebviewWindow {
-	return app.Window.NewWithOptions(application.WebviewWindowOptions{
+	// 托盘模式下:窗口无系统标题栏、不可拖动/缩放、常驻置顶,
+	// 由 TrayService 通过 AttachWindow 将其锚定到托盘图标(右下角)。
+	// 关闭窗口时拦截为隐藏,保持应用后台运行。
+	opts := application.WebviewWindowOptions{
 		DevToolsEnabled: true,
 		Title:           cfg.Title,
 		Width:           cfg.Width,
 		Height:          cfg.Height,
 		EnableFileDrop:  true,
-		AlwaysOnTop:     alwaysOnTop,
+		AlwaysOnTop:     alwaysOnTop || startInTray,
 		Hidden:          startInTray,
+		Frameless:       startInTray,
+		DisableResize:   startInTray,
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: startInTray,
 		},
@@ -41,5 +46,7 @@ func NewMain(app *application.App, cfg config.WindowConfig, alwaysOnTop bool, st
 		},
 		BackgroundColour: cfg.Background,
 		URL:              "/",
-	})
+	}
+
+	return app.Window.NewWithOptions(opts)
 }
