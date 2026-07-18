@@ -140,24 +140,26 @@ export const editableTheme: Extension = EditorView.theme({
     fontFamily: "inherit",
     minHeight: "24px",
     caretColor: "hsl(var(--foreground))",
+    lineHeight: "1.5",
   },
   ".cm-scroller": {
     overflow: "auto",
     maxHeight: "200px",
     fontFamily: "inherit",
   },
-  ".cm-line": {
-    padding: "0",
-  },
-  "&.cm-focused": {
-    outline: "none",
-  },
   // placeholder 默认作为行内元素参与 .cm-line 布局,一旦启用了 lineWrapping
   // 且文本较长,会换行撑高 .cm-line 的 content box,导致 .cm-cursor 高度
   // 跟着变高。把它设为 absolute,并强制单行 + 溢出隐藏,让它完全脱离
   // 行盒布局,只作为提示层浮在第一行上。
+  // 注意:absolute + top:0 会让 placeholder 的 box 高度坍缩到内容高度,
+  // 在某些字体/缩放下会把下半部分字形裁掉。这里显式给 line-height 和
+  // display:block,保证有完整的行高盒来容纳字形。
   ".cm-line": {
+    padding: "0",
     position: "relative",
+  },
+  "&.cm-focused": {
+    outline: "none",
   },
   ".cm-placeholder": {
     color: "#9ca3af !important",
@@ -165,6 +167,9 @@ export const editableTheme: Extension = EditorView.theme({
     top: "0",
     left: "0",
     right: "0",
+    display: "block",
+    lineHeight: "1.5",
+    height: "1.5em",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
