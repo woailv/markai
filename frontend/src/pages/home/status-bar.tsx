@@ -1,6 +1,7 @@
-import { Pin, PanelLeft, PanelRight } from "lucide-react"
+import { Minimize2, Pin, PanelLeft, PanelRight } from "lucide-react"
 import { useEffect } from "react"
 
+import { EnableTray } from "@/../bindings/prompttool/internal/services/trayservice"
 import { cn } from "@/lib/utils"
 import {
   useRightPanelStore,
@@ -67,6 +68,13 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-1">
+        <ToggleButton
+          active={false}
+          onClick={() => void EnableTray()}
+          title="最小化到系统托盘"
+        >
+          <Minimize2 className="h-3 w-3" />
+        </ToggleButton>
         <ToggleButton
           active={alwaysOnTop}
           onClick={() => void toggleAlwaysOnTop()}
