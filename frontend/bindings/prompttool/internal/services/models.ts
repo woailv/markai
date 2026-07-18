@@ -99,6 +99,16 @@ export interface ClearRecentInput {
 }
 
 /**
+ * ClipboardPaths 表示从系统剪贴板读取到的文件路径集合及其操作语义。
+ * Cut=true 表示系统剪贴板标记为"剪切"(Windows 下 Preferred DropEffect=2),
+ * 粘贴方应在复制成功后删除源文件。
+ */
+export interface ClipboardPaths {
+    "paths": string[] | null;
+    "cut": boolean;
+}
+
+/**
  * ConversationDetail 会话详情:包含元数据 + 消息序列。
  */
 export interface ConversationDetail {
@@ -227,6 +237,15 @@ export interface MovePathInput {
     "source": string;
     "destination": string;
     "batchId"?: number;
+}
+
+/**
+ * PasteFromClipboardResult 描述一次剪贴板粘贴的结果。
+ * Written 为写入到目标目录的绝对路径列表;Cut 表示是否按剪切语义执行(源已被删除)。
+ */
+export interface PasteFromClipboardResult {
+    "written": string[] | null;
+    "cut": boolean;
 }
 
 /**

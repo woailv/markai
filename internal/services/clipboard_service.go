@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+// ClipboardPaths 表示从系统剪贴板读取到的文件路径集合及其操作语义。
+// Cut=true 表示系统剪贴板标记为"剪切"(Windows 下 Preferred DropEffect=2),
+// 粘贴方应在复制成功后删除源文件。
+type ClipboardPaths struct {
+	Paths []string `json:"paths"`
+	Cut   bool     `json:"cut"`
+}
+
 // ClipboardService 提供跨平台的文件剪贴板写入能力。
 // 前端 Ctrl+C / Ctrl+X 时,除了在内存中(useClipboardStore)记录,
 // 还调用本服务把路径写入系统剪贴板,使用户可在系统文件管理器中直接 Ctrl+V 粘贴。
@@ -128,4 +136,216 @@ func writeClipboardLinux(paths []string) error {
 func commandExists(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+// ReadPaths 从系统剪贴板读取文件路径列表。
+// 若剪贴板不含文件引用,返回空 Paths 和 nil 错误(调用方据此决定是否降级为文本粘贴)。
+// Cut 字段在支持的平台上反映"剪切"语义(目前 Windows 下通过 Preferred DropEffect 判定)。
+func (s *ClipboardService) ReadPaths() (*ClipboardPaths, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return readClipboardWindows()
+	case "darwin":
+		return readClipboardDarwin()
+	default:
+		return readClipboardLinux()
+	}
+}
+
+// readClipboardWindows 通过 PowerShell 读取 CF_HDROP 文件列表,并解析 Preferred DropEffect
+// 判断是否为剪切语义(值 & 0x2 != 0 视为剪切)。
+func readClipboardWindows() (*ClipboardPaths, error) {
+	// 使用极不可能出现在路径中的分隔符 US(\u001F)分割文件列表,
+	// 与 DropEffect 之间使用 RS(\u001E)分隔,便于稳定解析。
+	script := `
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms | Out-Null
+$files = [System.Windows.Forms.Clipboard]::GetFileDropList()
+$effect = 5
+$data = [System.Windows.Forms.Clipboard]::GetDataObject()
+if ($data -ne $null -and $data.GetDataPresent('Preferred DropEffect')) {
+    $stream = $data.GetData('Preferred DropEffect')
+    if ($stream -ne $null) {
+        $buf = New-Object byte[] 4
+        [void]$stream.Read($buf, 0, 4)
+        $effect = [BitConverter]::ToInt32($buf, 0)
+    }
+}
+$joined = ''
+if ($files -ne $null -and $files.Count -gt 0) {
+    $joined = [string]::Join([char]0x1F, @($files))
+}
+[Console]::Out.Write($joined + [char]0x1E + $effect)
+`
+	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", script)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("clipboard: powershell read: %w: %s", err, stderr.String())
+	}
+
+	out := stdout.String()
+	sepIdx := strings.LastIndex(out, "\x1E")
+	if sepIdx < 0 {
+		return &ClipboardPaths{}, nil
+	}
+	rawPaths := out[:sepIdx]
+	effectStr := strings.TrimSpace(out[sepIdx+1:])
+
+	paths := make([]string, 0)
+	if rawPaths != "" {
+		for _, p := range strings.Split(rawPaths, "\x1F") {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				paths = append(paths, p)
+			}
+		}
+	}
+
+	cut := false
+	// DropEffect: 0x1=Copy, 0x2=Move。移动位存在即视为剪切。
+	if v, err := parseIntSafe(effectStr); err == nil {
+		if v&0x2 != 0 && v&0x1 == 0 {
+			cut = true
+		}
+	}
+	return &ClipboardPaths{Paths: paths, Cut: cut}, nil
+}
+
+// readClipboardDarwin 通过 osascript 读取剪贴板中的文件引用。
+// macOS 没有类似 Windows 的 Preferred DropEffect,统一按"复制"语义返回。
+func readClipboardDarwin() (*ClipboardPaths, error) {
+	// 尝试以文件列表形式获取;若剪贴板不含文件,osascript 会报错,此时返回空。
+	script := `
+try
+    set theFiles to the clipboard as «class furl»
+    return POSIX path of theFiles
+on error
+    try
+        set theList to the clipboard as list
+        set out to ""
+        repeat with f in theList
+            try
+                set out to out & (POSIX path of f) & (ASCII character 31)
+            end try
+        end repeat
+        return out
+    on error
+        return ""
+    end try
+end try
+`
+	cmd := exec.Command("osascript", "-e", script)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// osascript 在剪贴板无文件时可能报错,视为空剪贴板。
+		return &ClipboardPaths{}, nil
+	}
+	out := strings.TrimRight(stdout.String(), "\r\n")
+	if out == "" {
+		return &ClipboardPaths{}, nil
+	}
+	paths := make([]string, 0)
+	for _, p := range strings.Split(out, "\x1F") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 && out != "" {
+		paths = append(paths, strings.TrimSpace(out))
+	}
+	return &ClipboardPaths{Paths: paths, Cut: false}, nil
+}
+
+// readClipboardLinux 优先 wl-paste(Wayland),回退 xclip(X11),读取 text/uri-list。
+// Linux 桌面剪切语义(x-special/gnome-copied-files)未覆盖,统一按复制处理。
+func readClipboardLinux() (*ClipboardPaths, error) {
+	var cmd *exec.Cmd
+	switch {
+	case commandExists("wl-paste"):
+		cmd = exec.Command("wl-paste", "--type", "text/uri-list")
+	case commandExists("xclip"):
+		cmd = exec.Command("xclip", "-selection", "clipboard", "-t", "text/uri-list", "-o")
+	default:
+		return nil, errors.New("clipboard: neither wl-paste nor xclip is available")
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		// 无 uri-list 数据视为空剪贴板,而非硬错误。
+		return &ClipboardPaths{}, nil
+	}
+	paths := make([]string, 0)
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "file://") {
+			paths = append(paths, decodeFileURI(strings.TrimPrefix(line, "file://")))
+		}
+	}
+	return &ClipboardPaths{Paths: paths, Cut: false}, nil
+}
+
+// decodeFileURI 对 file:// URI 的路径部分做 URL 反转义(处理空格 %20 等)。
+func decodeFileURI(p string) string {
+	var b strings.Builder
+	for i := 0; i < len(p); i++ {
+		if p[i] == '%' && i+2 < len(p) {
+			h1, ok1 := hexVal(p[i+1])
+			h2, ok2 := hexVal(p[i+2])
+			if ok1 && ok2 {
+				b.WriteByte(byte(h1<<4 | h2))
+				i += 2
+				continue
+			}
+		}
+		b.WriteByte(p[i])
+	}
+	return b.String()
+}
+
+func hexVal(c byte) (int, bool) {
+	switch {
+	case c >= '0' && c <= '9':
+		return int(c - '0'), true
+	case c >= 'a' && c <= 'f':
+		return int(c-'a') + 10, true
+	case c >= 'A' && c <= 'F':
+		return int(c-'A') + 10, true
+	}
+	return 0, false
+}
+
+// parseIntSafe 解析十进制整数,失败返回错误。避免引入 strconv 造成大范围修改。
+func parseIntSafe(s string) (int, error) {
+	if s == "" {
+		return 0, errors.New("empty")
+	}
+	sign := 1
+	i := 0
+	if s[0] == '-' {
+		sign = -1
+		i = 1
+	} else if s[0] == '+' {
+		i = 1
+	}
+	if i >= len(s) {
+		return 0, errors.New("no digits")
+	}
+	n := 0
+	for ; i < len(s); i++ {
+		c := s[i]
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid char %q", c)
+		}
+		n = n*10 + int(c-'0')
+	}
+	return sign * n, nil
 }

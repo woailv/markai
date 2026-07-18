@@ -87,6 +87,17 @@ export function OpenInExplorer(path: string): $CancellablePromise<void> {
 }
 
 /**
+ * PasteFromClipboard 从系统剪贴板读取文件路径,并粘贴到 workspaceDir。
+ * - 若剪贴板不含文件路径,返回空 Written 与 nil 错误(调用方可据此提示或降级)。
+ * - 剪切语义由剪贴板自身携带(Windows 下的 Preferred DropEffect);
+ *   在支持的平台上,粘贴成功后会删除源文件。
+ * - 目标同名自动重命名,规则与 CopyPathsToWorkspace 保持一致。
+ */
+export function PasteFromClipboard(workspaceDir: string): $CancellablePromise<$models.PasteFromClipboardResult | null> {
+    return $Call.ByID(1430703448, workspaceDir);
+}
+
+/**
  * Read 读取文件内容。
  */
 export function Read(path: string): $CancellablePromise<$models.ReadFileResult | null> {

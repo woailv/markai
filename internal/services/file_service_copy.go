@@ -9,6 +9,34 @@ import (
 	"strings"
 )
 
+// PasteFromClipboardResult 描述一次剪贴板粘贴的结果。
+// Written 为写入到目标目录的绝对路径列表;Cut 表示是否按剪切语义执行(源已被删除)。
+type PasteFromClipboardResult struct {
+	Written []string `json:"written"`
+	Cut     bool     `json:"cut"`
+}
+
+// PasteFromClipboard 从系统剪贴板读取文件路径,并粘贴到 workspaceDir。
+// - 若剪贴板不含文件路径,返回空 Written 与 nil 错误(调用方可据此提示或降级)。
+// - 剪切语义由剪贴板自身携带(Windows 下的 Preferred DropEffect);
+//   在支持的平台上,粘贴成功后会删除源文件。
+// - 目标同名自动重命名,规则与 CopyPathsToWorkspace 保持一致。
+func (s *FileService) PasteFromClipboard(workspaceDir string) (*PasteFromClipboardResult, error) {
+	clip := NewClipboardService()
+	cp, err := clip.ReadPaths()
+	if err != nil {
+		return nil, err
+	}
+	if cp == nil || len(cp.Paths) == 0 {
+		return &PasteFromClipboardResult{Written: []string{}, Cut: false}, nil
+	}
+	written, err := s.CopyPathsToWorkspace(cp.Paths, workspaceDir, cp.Cut)
+	if err != nil {
+		return &PasteFromClipboardResult{Written: written, Cut: cp.Cut}, err
+	}
+	return &PasteFromClipboardResult{Written: written, Cut: cp.Cut}, nil
+}
+
 // CopyPathsToWorkspace 将 srcPaths 中的每个文件/目录复制到 workspaceDir。
 // Cut=true 时,单项复制成功后立即删除对应源(剪切语义)。
 // 目标同名自动重命名为 "name (1).ext"、"name (2).ext" 等。
