@@ -1,11 +1,6 @@
-import { Archive, ArchiveRestore, Pin, PanelLeft, PanelRight } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { Pin, PanelLeft, PanelRight } from "lucide-react"
+import { useEffect } from "react"
 
-import {
-  DisableTray,
-  EnableTray,
-  IsTrayActive,
-} from "@/../bindings/prompttool/internal/services/trayservice"
 import { cn } from "@/lib/utils"
 import {
   useRightPanelStore,
@@ -45,33 +40,10 @@ export function StatusBar() {
   const bootstrapWindow = useWindowStore((s) => s.bootstrap)
   const toggleAlwaysOnTop = useWindowStore((s) => s.toggleAlwaysOnTop)
   const activeSummary = useActiveTabSummary()
-  const [trayActive, setTrayActive] = useState(false)
 
   useEffect(() => {
     void bootstrapWindow()
   }, [bootstrapWindow])
-
-  useEffect(() => {
-    IsTrayActive()
-      .then((v) => setTrayActive(Boolean(v)))
-      .catch(() => {
-        /* 忽略初始化查询失败 */
-      })
-  }, [])
-
-  const handleToggleTray = useCallback(async () => {
-    try {
-      if (trayActive) {
-        await DisableTray()
-        setTrayActive(false)
-      } else {
-        await EnableTray()
-        setTrayActive(true)
-      }
-    } catch (err) {
-      throw err
-    }
-  }, [trayActive])
 
   return (
     <footer className="flex h-6 shrink-0 items-center justify-between border-t bg-muted/30 px-2 text-[11px] text-muted-foreground">
@@ -95,17 +67,6 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-1">
-        <ToggleButton
-          active={trayActive}
-          onClick={() => void handleToggleTray()}
-          title={trayActive ? "退出托盘模式" : "启用托盘模式"}
-        >
-          {trayActive ? (
-            <ArchiveRestore className="h-3 w-3" />
-          ) : (
-            <Archive className="h-3 w-3" />
-          )}
-        </ToggleButton>
         <ToggleButton
           active={alwaysOnTop}
           onClick={() => void toggleAlwaysOnTop()}

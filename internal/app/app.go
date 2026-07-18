@@ -12,7 +12,6 @@ import (
 	"prompttool/internal/window"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // App 封装 Wails application 及其依赖,便于集中管理生命周期。
@@ -68,19 +67,8 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: init services: %w", err)
 	}
 
-	// 读取托盘模式偏好。若上次退出时处于托盘模式,本次以"托盘常驻"
-	// 形态启动:Windows 下禁用"最后窗口关闭即退出",配合窗口隐藏
-	// 实现与 demo/systray-custom 一致的后台运行体验。
-	// 读取失败降级为 false,不阻塞启动。
-	startInTray := false
-	if registry.Window != nil {
-		if v, err := registry.Window.LoadPersistedTrayMode(); err != nil {
-			logger.Error("load persisted tray mode", "err", err)
-		} else {
-			startInTray = v
-		}
-	}
-
+	// 托盘作为常驻入口存在,关闭主窗口时应用应继续后台运行,
+	// 因此禁用"最后窗口关闭即退出"行为,由托盘菜单显式退出。
 	wailsApp := application.New(application.Options{
 		Name:        cfg.Name,
 		Description: cfg.Description,
@@ -89,31 +77,16 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: !startInTray,
+			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
 		Windows: application.WindowsOptions{
-			DisableQuitOnLastWindowClosed: startInTray,
+			DisableQuitOnLastWindowClosed: true,
 		},
 		KeyBindings: map[string]func(window application.Window){
 			"F12": func(window application.Window) {
 				window.OpenDevTools()
 			},
 		},
-	})
-	// 监听应用启动完成事件。托盘模式启动时,在此处唤出托盘窗口
-	// —— 必须等到 ApplicationStarted 之后,窗口的原生句柄才真正
-	// 存在,提早调用 Show 会被 Wails 吞掉,表现为窗口不出现。
-	_ = wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(event *application.ApplicationEvent) {
-		if !startInTray || registry.Tray == nil {
-			return
-		}
-		if err := registry.Tray.ShowWindow(); err != nil {
-			logger.Error("show tray window on startup", "err", err)
-			return
-		}
-		if registry.Window != nil {
-			registry.Window.SetInitialVisibility(true)
-		}
 	})
 
 	if registry.Dialog != nil {
@@ -148,12 +121,11 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		}
 	}
 
-	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop, startInTray)
+	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop)
 	registerFilesDropForward(wailsApp, mainWin, logger)
 
 	// 注入置顶设置器、显示/隐藏设置器与事件推送。setter 通过闭包
 	// 捕获主窗口,使 WindowService 无需感知 Wails 类型。
-	// 初始可见性与 startInTray 相反:托盘启动时窗口先隐藏。
 	if registry.Window != nil {
 		registry.Window.SetEmitter(emitter)
 		registry.Window.SetSetter(func(enabled bool) {
@@ -171,25 +143,16 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 				mainWin.Hide()
 			}
 		})
-		registry.Window.SetInitialVisibility(!startInTray)
+		registry.Window.SetInitialVisibility(true)
 	}
 
-	// 注入托盘依赖:Wails 应用、主窗口引用与持久化回调。
-	// TrayService 由前端主动调用 EnableTray 触发进入托盘模式;
-	// 若启动时已处于托盘模式,则在此处直接激活,恢复上次形态。
+	// 托盘作为常驻入口,启动时直接安装:创建托盘图标 / 菜单,
+	// 并注册窗口关闭拦截钩子,使关闭按钮转为隐藏窗口。
 	if registry.Tray != nil {
 		registry.Tray.SetApp(wailsApp)
 		registry.Tray.SetWindow(mainWin)
-		if registry.Window != nil {
-			registry.Tray.SetPersister(registry.Window.SavePersistedTrayMode)
-		}
-		if startInTray {
-			// 只在这里创建托盘图标 / 注册关闭拦截 / 预置窗口位置。
-			// 真正的"显示托盘窗口"动作放到 ApplicationStarted 回调里,
-			// 因为此刻窗口原生资源尚未就绪,立即 Show 无效。
-			if err := registry.Tray.EnableTray(); err != nil {
-				logger.Error("enable tray on startup", "err", err)
-			}
+		if err := registry.Tray.Install(); err != nil {
+			logger.Error("install tray on startup", "err", err)
 		}
 	}
 

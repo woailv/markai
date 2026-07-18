@@ -64,7 +64,6 @@ export type {
     SetPinnedInput,
     SetTemplatesInput,
     SetWorkspaceRootInput,
-    TrayModePersister,
     UndoBatchResult,
     UpdateInput,
     UpdateMessageInput,

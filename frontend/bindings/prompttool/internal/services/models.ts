@@ -365,24 +365,6 @@ export interface SetWorkspaceRootInput {
 }
 
 /**
- * TrayService 提供给前端主动切换到"系统托盘运行"模式的能力。
- * 
- * 前端调用 EnableTray 后:
- *   - 主窗口被隐藏(而非关闭);
- *   - 在系统托盘创建图标与菜单(Show / Quit);
- *   - 窗口关闭事件被拦截为"隐藏",保证再次通过托盘唤出。
- * 
- * DisableTray 会移除托盘并恢复窗口的默认关闭行为。
- * 
- * TrayService 不直接依赖 window 包,主窗口通过 SetWindow 由 app 层注入,
- * 避免 services -> window 的循环依赖。
- * TrayModePersister 持久化"当前是否处于托盘模式"偏好的回调。
- * 由 app 层注入,通常是 WindowService.SavePersistedTrayMode 的闭包,
- * 避免 TrayService 反向依赖 WindowService。
- */
-export type TrayModePersister = any;
-
-/**
  * UndoBatchResult 撤销结果概览。
  */
 export interface UndoBatchResult {

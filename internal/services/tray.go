@@ -10,32 +10,24 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/icons"
 )
 
-// TrayService 提供给前端主动切换到"系统托盘运行"模式的能力。
+// TrayService 负责创建并维护系统托盘图标与菜单。
 //
-// 前端调用 EnableTray 后:
-//   - 主窗口被隐藏(而非关闭);
-//   - 在系统托盘创建图标与菜单(Show / Quit);
-//   - 窗口关闭事件被拦截为"隐藏",保证再次通过托盘唤出。
-//
-// DisableTray 会移除托盘并恢复窗口的默认关闭行为。
+// 从本版本起,托盘不再是"可切换的运行模式",而是应用的常驻入口:
+//   - 应用启动时由 app 层调用一次 Install,创建托盘图标 / 菜单;
+//   - 窗口关闭按钮被拦截为"隐藏",保证再次通过托盘唤出;
+//   - 前端仍可通过 ShowWindow 主动唤出主窗口。
 //
 // TrayService 不直接依赖 window 包,主窗口通过 SetWindow 由 app 层注入,
 // 避免 services -> window 的循环依赖。
-// TrayModePersister 持久化"当前是否处于托盘模式"偏好的回调。
-// 由 app 层注入,通常是 WindowService.SavePersistedTrayMode 的闭包,
-// 避免 TrayService 反向依赖 WindowService。
-type TrayModePersister func(enabled bool) error
-
 type TrayService struct {
 	mu sync.Mutex
 
-	app       *application.App
-	window    *application.WebviewWindow
-	tray      *application.SystemTray
-	menu      *application.Menu
-	unhook    func()
-	iconData  []byte
-	persister TrayModePersister
+	app      *application.App
+	window   *application.WebviewWindow
+	tray     *application.SystemTray
+	menu     *application.Menu
+	unhook   func()
+	iconData []byte
 }
 
 // NewTrayService 创建 TrayService。app 与 window 依赖需在 app 层注入。
@@ -66,16 +58,9 @@ func (s *TrayService) SetIcon(data []byte) {
 	s.iconData = data
 }
 
-// SetPersister 注入托盘模式持久化回调。
-func (s *TrayService) SetPersister(p TrayModePersister) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.persister = p
-}
-
-// EnableTray 启用托盘模式:隐藏主窗口并创建托盘图标与菜单。
-// 幂等:重复调用不会重复创建。
-func (s *TrayService) EnableTray() error {
+// Install 创建托盘图标与菜单,并注册窗口关闭拦截钩子。
+// 由 app 层在启动阶段调用一次;幂等:重复调用不会重复创建。
+func (s *TrayService) Install() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -86,8 +71,6 @@ func (s *TrayService) EnableTray() error {
 		return errors.New("tray: main window not initialized")
 	}
 	if s.tray != nil {
-		// 已启用,只需确保窗口隐藏。
-		s.window.Hide()
 		return nil
 	}
 
@@ -121,52 +104,10 @@ func (s *TrayService) EnableTray() error {
 
 	s.tray = tray
 	s.menu = menu
-
-	// 托盘模式仅承担"后台运行 + 托盘入口"职责,不改变主窗口 UI 形态,
-	// 也不再把窗口锚定到屏幕右下角,窗口的位置由用户自己控制。
-	s.window.Hide()
-	s.persistLocked(true)
 	return nil
 }
 
-// DisableTray 关闭托盘模式,移除托盘图标并恢复窗口关闭默认行为,
-// 同时将主窗口重新显示出来。
-// 幂等:未启用时直接返回。
-func (s *TrayService) DisableTray() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.tray == nil {
-		return nil
-	}
-
-	if s.unhook != nil {
-		s.unhook()
-		s.unhook = nil
-	}
-
-	s.tray.Destroy()
-	s.tray = nil
-	s.menu = nil
-
-	if s.window != nil {
-		s.window.Show()
-		s.window.Focus()
-	}
-	s.persistLocked(false)
-	return nil
-}
-
-// persistLocked 在持锁状态下写入托盘模式偏好。失败静默(不阻塞主流程),
-// 因为持久化仅用于下次启动恢复,当次运行时状态已通过其他路径生效。
-func (s *TrayService) persistLocked(enabled bool) {
-	if s.persister == nil {
-		return
-	}
-	_ = s.persister(enabled)
-}
-
-// ShowWindow 主动显示并聚焦主窗口(供前端在托盘模式下唤出窗口)。
+// ShowWindow 主动显示并聚焦主窗口(供前端 / 托盘菜单唤出窗口)。
 func (s *TrayService) ShowWindow() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -175,13 +116,6 @@ func (s *TrayService) ShowWindow() error {
 	}
 	s.showWindowLocked()
 	return nil
-}
-
-// IsTrayActive 返回当前是否处于托盘模式。
-func (s *TrayService) IsTrayActive() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.tray != nil
 }
 
 // showWindowLocked 在持锁状态下显示窗口。
