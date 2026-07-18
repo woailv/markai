@@ -88,6 +88,8 @@ func (s *TrayService) Install() error {
 
 	menu := s.app.NewMenu()
 	menu.Add("显示窗口").OnClick(func(ctx *application.Context) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.showWindowLocked()
 	})
 	menu.AddSeparator()
@@ -95,6 +97,14 @@ func (s *TrayService) Install() error {
 		s.app.Quit()
 	})
 	tray.SetMenu(menu)
+
+	// 单击托盘图标显示窗口(Windows/Linux 左键点击行为)。
+	// macOS 左键默认展开菜单,由系统菜单项"显示窗口"承担唤出职责。
+	tray.OnClick(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.showWindowLocked()
+	})
 
 	// 拦截关闭:关闭按钮转为隐藏窗口,保持后台运行。
 	s.unhook = s.window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
