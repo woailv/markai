@@ -14,7 +14,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -91,22 +90,6 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
-  const [pendingDeleteMsgId, setPendingDeleteMsgId] = useState<number | null>(
-    null,
-  )
-
-  const pendingDeleteMsg = useMemo(
-    () =>
-      pendingDeleteMsgId !== null
-        ? messages.find((m) => m.id === pendingDeleteMsgId) ?? null
-        : null,
-    [messages, pendingDeleteMsgId],
-  )
-
-  const handleRequestDeleteMessage = useCallback(
-    (id: number) => setPendingDeleteMsgId(id),
-    [],
-  )
 
   // 用户手动上滚时,暂停自动跟随;回到底部区间(阈值 32px)时恢复
   useEffect(() => {
@@ -227,9 +210,7 @@ export function ChatPanel({
                         key={msg.id}
                         msg={msg}
                         isGrouped={isGrouped}
-                        onDelete={
-                          onDeleteMessage ? handleRequestDeleteMessage : undefined
-                        }
+                        onDelete={onDeleteMessage}
                         onEdit={onEditMessage}
                         templates={templates}
                       />
@@ -241,9 +222,7 @@ export function ChatPanel({
                       msg={msg}
                       isGrouped={isGrouped}
                       isGroupedNext={isGroupedNext}
-                      onDelete={
-                        onDeleteMessage ? handleRequestDeleteMessage : undefined
-                      }
+                      onDelete={onDeleteMessage}
                       onEdit={onEditMessage}
                       templates={templates}
                     />
@@ -269,36 +248,6 @@ export function ChatPanel({
         />
       </div>
 
-      <AlertDialog
-        open={pendingDeleteMsgId !== null}
-        onOpenChange={(o) => {
-          if (!o) setPendingDeleteMsgId(null)
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除消息</AlertDialogTitle>
-            <AlertDialogDescription>
-              确定要删除这条{pendingDeleteMsg?.role === "user" ? "用户" : "助手"}
-              消息吗?此操作无法撤销。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (pendingDeleteMsgId !== null && onDeleteMessage) {
-                  onDeleteMessage(pendingDeleteMsgId)
-                }
-                setPendingDeleteMsgId(null)
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </section>
   )
 }
