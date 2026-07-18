@@ -28,14 +28,18 @@ import {
   siblingNamesOf,
 } from "./file-ops"
 import { InlineNameEditor } from "./inline-name-editor"
-import { pasteFromClipboardData, pasteFromPaths } from "./paste-actions"
+import {
+  copyPathsToSystemClipboard,
+  pasteFromClipboardData,
+  pasteFromPaths,
+  pasteFromSystemClipboard,
+} from "./paste-actions"
 import { resolvePasteTarget, resolveTargetFromElement } from "./paste-target"
 import { computeVisibleOrder, emitFilesDropped } from "./selection-utils"
 import { ToastHost, toast } from "./toast"
 import { WorkspaceToolbar } from "./toolbar"
 import { TreeNode } from "./tree-node"
 import type { ContextMenuState } from "./types"
-import { useClipboardStore } from "./use-clipboard-store"
 import { useEditingStore } from "./use-editing-state"
 import {
   createDirectory as createDirOp,
@@ -385,20 +389,26 @@ function TreeArea() {
       return
     }
     e.preventDefault()
-    void pasteFromClipboardData(e.clipboardData, target)
+    // 优先走后端系统剪贴板(支持文件引用与 Windows 剪切语义);
+    // 若剪贴板中不含文件引用,再降级为 DataTransfer(如剪贴板图片)。
+    void pasteFromSystemClipboard(target).then((written) => {
+      if (written.length === 0) {
+        void pasteFromClipboardData(e.clipboardData, target)
+      }
+    })
   }, [shouldDebouncePaste])
 
-  // 键盘剪贴板:Ctrl/Cmd + C / X / V。绑定到 window,焦点检测放到回调里。
+  // 键盘剪贴板:Ctrl/Cmd + C / V,通过后端系统剪贴板通道执行。
+  // 绑定到 window,焦点检测放到回调里。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (editing) return
       const mod = e.ctrlKey || e.metaKey
       if (!mod) return
       const key = e.key.toLowerCase()
-      if (key !== "c" && key !== "x" && key !== "v") return
+      if (key !== "c" && key !== "v") return
 
-      // 面板必须获得过焦点或选择集非空,否则不拦截
-      // (更保守:若焦点在编辑器/输入框内直接放行)
+      // 焦点在编辑器/输入框内直接放行
       if (isEditableTarget(document.activeElement)) return
 
       // 面板容器未获得焦点也不管(避免抢全局)
@@ -406,7 +416,7 @@ function TreeArea() {
       if (!panel) return
       if (!panel.contains(document.activeElement)) return
 
-      if (key === "c" || key === "x") {
+      if (key === "c") {
         const state = useWorkspaceStore.getState()
         const paths =
           state.selectedPaths.size > 0
@@ -416,19 +426,11 @@ function TreeArea() {
               : []
         if (paths.length === 0) return
         e.preventDefault()
-        useClipboardStore
-          .getState()
-          .setInternal(paths, key === "c" ? "copy" : "cut")
-        toast.info(
-          key === "c" ? "已复制" : "已剪切",
-          paths.length > 1 ? `${paths.length} 项` : undefined,
-        )
+        void copyPathsToSystemClipboard(paths)
         return
       }
 
       // key === "v"
-      const clip = useClipboardStore.getState()
-      if (clip.isEmpty()) return
       if (shouldDebouncePaste()) {
         e.preventDefault()
         return
@@ -440,13 +442,7 @@ function TreeArea() {
         return
       }
       e.preventDefault()
-      const cut = clip.mode === "cut"
-      const paths = [...clip.paths]
-      void pasteFromPaths(paths, target, cut).then((result) => {
-        if (cut && result.length > 0) {
-          useClipboardStore.getState().clear()
-        }
-      })
+      void pasteFromSystemClipboard(target)
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)

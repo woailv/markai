@@ -1,4 +1,7 @@
-import { FileService } from "@/../bindings/prompttool/internal/services"
+import {
+  ClipboardService,
+  FileService,
+} from "@/../bindings/prompttool/internal/services"
 import { useWorkspaceStore } from "@/store"
 
 import { toast } from "./toast"
@@ -104,7 +107,60 @@ export async function pasteFromPaths(
 }
 
 /**
- * 从 DataTransfer(系统拖入/系统剪贴板)中解析源:
+ * 将当前选中路径写入系统剪贴板(供 Ctrl+C 使用)。
+ * 后端使用平台原生 API(Windows CF_HDROP / macOS osascript / Linux wl-copy|xclip)
+ * 写入,粘贴时用户既可在应用内 Ctrl+V,也可在系统文件管理器中 Ctrl+V。
+ */
+export async function copyPathsToSystemClipboard(
+  paths: string[],
+): Promise<boolean> {
+  if (!paths || paths.length === 0) return false
+  try {
+    await ClipboardService.WritePaths(paths)
+    toast.info("已复制", paths.length > 1 ? `${paths.length} 项` : undefined)
+    return true
+  } catch (err) {
+    toast.error("复制失败", extractErrorMessage(err))
+    return false
+  }
+}
+
+/**
+ * 从系统剪贴板粘贴到目标目录(供 Ctrl+V 使用)。
+ * 由后端读取剪贴板中的文件引用并复制到 targetDir,若剪贴板标记为"剪切"
+ * (Windows Preferred DropEffect=2),后端会在复制成功后删除源。
+ * 返回写入后的绝对路径列表,并将其设为多选。
+ */
+export async function pasteFromSystemClipboard(
+  targetDir: string,
+): Promise<string[]> {
+  if (!targetDir) {
+    toast.error("无法粘贴", "未设置工作区目录")
+    return []
+  }
+  try {
+    const res = await FileService.PasteFromClipboard(targetDir)
+    const written = res?.written ?? []
+    if (written.length === 0) {
+      // 剪贴板不含文件引用:静默返回,调用方可决定是否降级
+      return []
+    }
+    await refreshTarget(targetDir)
+    selectPaths(written)
+    const action = res?.cut ? "移动" : "复制"
+    toast.success(
+      `${action}完成`,
+      written.length > 1 ? `共 ${written.length} 项` : undefined,
+    )
+    return written
+  } catch (err) {
+    toast.error("粘贴失败", extractErrorMessage(err))
+    return []
+  }
+}
+
+/**
+ * 从 DataTransfer(系统拖入)中解析源:
  *   1) 优先 text/uri-list(file:// URI)→ 走 pasteFromPaths
  *   2) 否则 dt.files 逐个 WriteBytesToWorkspace(仅复制语义)
  */
