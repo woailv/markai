@@ -55,6 +55,15 @@ export function LoadPersistedTrayMode(): $CancellablePromise<boolean> {
 }
 
 /**
+ * MoveToBottomRight 将主窗口移动到屏幕工作区的右下角,
+ * 使窗口右边缘与屏幕右边缘距离为 0、下边缘与状态栏/任务栏上沿距离为 0。
+ * 若 mover 未注入则返回错误。
+ */
+export function MoveToBottomRight(): $CancellablePromise<void> {
+    return $Call.ByID(2756813752);
+}
+
+/**
  * SavePersistedTrayMode 持久化托盘模式偏好,由 TrayService 在
  * EnableTray/DisableTray 成功后回调。
  */
@@ -68,6 +77,13 @@ export function SavePersistedTrayMode(enabled: boolean): $CancellablePromise<voi
  */
 export function SetAlwaysOnTop($in: $models.SetAlwaysOnTopInput): $CancellablePromise<$models.AlwaysOnTopState | null> {
     return $Call.ByID(1578897338, $in);
+}
+
+/**
+ * SetBottomRightMover 注入"移动窗口到屏幕右下角"能力。app 层在创建窗口后调用。
+ */
+export function SetBottomRightMover(mover: $models.WindowBottomRightMover): $CancellablePromise<void> {
+    return $Call.ByID(2762321275, mover);
 }
 
 /**

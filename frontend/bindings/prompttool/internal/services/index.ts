@@ -67,6 +67,7 @@ export type {
     UndoBatchResult,
     UpdateInput,
     UpdateMessageInput,
+    WindowBottomRightMover,
     WindowVisibilitySetter,
     WindowVisibilityState,
     WorkspaceEntry,

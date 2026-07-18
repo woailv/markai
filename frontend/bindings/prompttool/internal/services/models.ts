@@ -391,6 +391,14 @@ export interface UpdateMessageInput {
 }
 
 /**
+ * WindowBottomRightMover 将"将窗口移动到屏幕右下角"能力抽象为一个函数。
+ * 语义:窗口右边缘贴屏幕工作区右边缘(距离 0),窗口下边缘贴工作区底边缘
+ * (即状态栏/任务栏上沿,距离 0)。app 层在创建窗口后注入,内部通过 Wails
+ * runtime 获取屏幕工作区尺寸与当前窗口尺寸并调用 SetPosition。
+ */
+export type WindowBottomRightMover = any;
+
+/**
  * WindowVisibilitySetter 将"显示/隐藏窗口"能力抽象为一个函数。
  * app 层在创建窗口后注入,通常是 window.Show/window.Hide 的闭包封装。
  */

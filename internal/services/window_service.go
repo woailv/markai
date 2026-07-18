@@ -18,14 +18,21 @@ type AlwaysOnTopSetter func(enabled bool)
 // app 层在创建窗口后注入,通常是 window.Show/window.Hide 的闭包封装。
 type WindowVisibilitySetter func(visible bool)
 
+// WindowBottomRightMover 将"将窗口移动到屏幕右下角"能力抽象为一个函数。
+// 语义:窗口右边缘贴屏幕工作区右边缘(距离 0),窗口下边缘贴工作区底边缘
+// (即状态栏/任务栏上沿,距离 0)。app 层在创建窗口后注入,内部通过 Wails
+// runtime 获取屏幕工作区尺寸与当前窗口尺寸并调用 SetPosition。
+type WindowBottomRightMover func() error
+
 // WindowService 管理主窗口的用户可持久化设置。
 // 目前实现:置顶状态 (Always On Top)、显示/隐藏(供托盘模式调用)。
 type WindowService struct {
-	db            *db.DB
-	mu            sync.RWMutex
-	setter        AlwaysOnTopSetter
-	visibilitySet WindowVisibilitySetter
-	emitter       Emitter
+	db             *db.DB
+	mu             sync.RWMutex
+	setter         AlwaysOnTopSetter
+	visibilitySet  WindowVisibilitySetter
+	bottomRightMov WindowBottomRightMover
+	emitter        Emitter
 	// cached 反映当前应用中的置顶状态,避免频繁查库。
 	cached bool
 	// visible 反映当前窗口的可见性状态(内存缓存)。
@@ -102,6 +109,13 @@ func (s *WindowService) SetSetter(setter AlwaysOnTopSetter) {
 func (s *WindowService) SetVisibilitySetter(setter WindowVisibilitySetter) {
 	s.mu.Lock()
 	s.visibilitySet = setter
+	s.mu.Unlock()
+}
+
+// SetBottomRightMover 注入"移动窗口到屏幕右下角"能力。app 层在创建窗口后调用。
+func (s *WindowService) SetBottomRightMover(mover WindowBottomRightMover) {
+	s.mu.Lock()
+	s.bottomRightMov = mover
 	s.mu.Unlock()
 }
 
@@ -239,4 +253,20 @@ func (s *WindowService) emitVisibilityChanged(visible bool) {
 		return
 	}
 	e.EmitEvent(WindowEventVisibilityChanged, WindowVisibilityState{Visible: visible})
+}
+
+// MoveToBottomRight 将主窗口移动到屏幕工作区的右下角,
+// 使窗口右边缘与屏幕右边缘距离为 0、下边缘与状态栏/任务栏上沿距离为 0。
+// 若 mover 未注入则返回错误。
+func (s *WindowService) MoveToBottomRight() error {
+	s.mu.RLock()
+	mover := s.bottomRightMov
+	s.mu.RUnlock()
+	if mover == nil {
+		return errors.New("window: bottom-right mover not injected")
+	}
+	if err := mover(); err != nil {
+		return fmt.Errorf("window: move to bottom-right: %w", err)
+	}
+	return nil
 }
