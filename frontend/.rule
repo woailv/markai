@@ -1,0 +1,2 @@
+- 对话框删除按钮属性设置
+<AlertDialogAction variant="destructive">删除</AlertDialogAction>
