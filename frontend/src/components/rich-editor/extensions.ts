@@ -152,8 +152,23 @@ export const editableTheme: Extension = EditorView.theme({
   "&.cm-focused": {
     outline: "none",
   },
+  // placeholder 默认作为行内元素参与 .cm-line 布局,一旦启用了 lineWrapping
+  // 且文本较长,会换行撑高 .cm-line 的 content box,导致 .cm-cursor 高度
+  // 跟着变高。把它设为 absolute,并强制单行 + 溢出隐藏,让它完全脱离
+  // 行盒布局,只作为提示层浮在第一行上。
+  ".cm-line": {
+    position: "relative",
+  },
   ".cm-placeholder": {
     color: "#9ca3af !important",
+    position: "absolute",
+    top: "0",
+    left: "0",
+    right: "0",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    pointerEvents: "none",
   },
   // 保证 .cm-cursor 始终有非零尺寸,避免 IME 在 caret rect 为空时
   // 把候选框定位到屏幕 (0,0)。

@@ -224,7 +224,7 @@ export function RichComposer({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex flex-col border-t border-border/40 bg-transparent transition-colors",
+        "flex flex-col border-t border-border bg-transparent transition-colors",
         isDragOver && "border-t-primary bg-primary/5",
         "[&.file-drop-target-active]:border-t-primary [&.file-drop-target-active]:bg-primary/5",
       )}
