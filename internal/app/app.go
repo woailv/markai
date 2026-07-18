@@ -143,6 +143,12 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 				mainWin.Hide()
 			}
 		})
+		registry.Window.SetBottomRightMover(func() error {
+			if mainWin == nil {
+				return fmt.Errorf("app: main window not initialized")
+			}
+			return moveWindowToBottomRight(wailsApp, mainWin)
+		})
 		registry.Window.SetInitialVisibility(true)
 	}
 

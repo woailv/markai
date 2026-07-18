@@ -1,6 +1,7 @@
-import { Pin, PanelLeft, PanelRight } from "lucide-react"
+import { Pin, PanelLeft, PanelRight, MoveDownRight } from "lucide-react"
 import { useEffect } from "react"
 
+import { MoveToBottomRight } from "@/../bindings/prompttool/internal/services/windowservice"
 import { cn } from "@/lib/utils"
 import {
   useRightPanelStore,
@@ -67,6 +68,13 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-1">
+        <ToggleButton
+          active={false}
+          onClick={() => void MoveToBottomRight()}
+          title="将窗口移动到屏幕右下角"
+        >
+          <MoveDownRight className="h-3 w-3" />
+        </ToggleButton>
         <ToggleButton
           active={alwaysOnTop}
           onClick={() => void toggleAlwaysOnTop()}
