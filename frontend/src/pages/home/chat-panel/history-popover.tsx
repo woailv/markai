@@ -61,6 +61,7 @@ export function HistoryPopover({
 
   const pinned = filtered.filter((c) => c.pinned)
   const others = filtered.filter((c) => !c.pinned)
+  const clearableCount = conversations.filter((c) => !c.pinned).length
 
   const pendingDeleteConv = useMemo(
     () => conversations.find((c) => c.id === pendingDeleteId) ?? null,
@@ -124,6 +125,7 @@ export function HistoryPopover({
                       onRename={() => handleRename(c)}
                       onRequestDelete={() => setPendingDeleteId(c.id)}
                       onTogglePin={() => onTogglePin(c.id, !c.pinned)}
+                      canDelete={false}
                     />
                   ))}
                 </>
@@ -154,16 +156,22 @@ export function HistoryPopover({
         {conversations.length > 0 && (
           <div className="flex items-center justify-between border-t px-2.5 py-1.5">
             <span className="text-[10px] text-muted-foreground">
-              共 {conversations.length} 条
+              共 {conversations.length} 条{pinned.length > 0 ? `(${pinned.length} 置顶)` : ""}
             </span>
             <Button
               size="sm"
               variant="ghost"
+              disabled={clearableCount === 0}
               onClick={() => {
                 setOpen(false)
                 onClearAll()
               }}
-              className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive"
+              title={
+                clearableCount === 0
+                  ? "无可清空的会话(置顶会话不会被删除)"
+                  : "清空未置顶的历史会话"
+              }
+              className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-destructive disabled:opacity-50"
             >
               <Trash2 className="h-3 w-3" />
               清空全部
@@ -217,6 +225,7 @@ function HistoryRow({
   onRename,
   onRequestDelete,
   onTogglePin,
+  canDelete = true,
 }: {
   conv: ConversationSummary
   active: boolean
@@ -224,6 +233,7 @@ function HistoryRow({
   onRename: () => void
   onRequestDelete: () => void
   onTogglePin: () => void
+  canDelete?: boolean
 }) {
   return (
     <div
@@ -271,9 +281,11 @@ function HistoryRow({
           <RowAction title="重命名" onMouseDown={onRename}>
             <Pencil className="h-3 w-3" />
           </RowAction>
-          <RowAction title="删除" onMouseDown={onRequestDelete} destructive>
-            <Trash2 className="h-3 w-3" />
-          </RowAction>
+          {canDelete && (
+            <RowAction title="删除" onMouseDown={onRequestDelete} destructive>
+              <Trash2 className="h-3 w-3" />
+            </RowAction>
+          )}
         </div>
       </div>
     </div>

@@ -50,7 +50,6 @@ export default function HomePage() {
   const renameConversation = useConversationStore((s) => s.rename)
   const setPinnedConversation = useConversationStore((s) => s.setPinned)
   const removeConversation = useConversationStore((s) => s.remove)
-  const clearAllConversations = useConversationStore((s) => s.clearAll)
 
   const templates = useTemplateStore((s) => s.templates)
   const loadTemplates = useTemplateStore((s) => s.load)
@@ -132,14 +131,19 @@ export default function HomePage() {
   )
 
   const handleClearAllConversations = useCallback(async () => {
+    // 排除置顶会话:仅清空未置顶的历史记录
+    const targets = conversations.filter((c) => !c.pinned)
+    if (targets.length === 0) return
     const ok = await confirmDestructive({
       title: "清空所有会话",
-      description: "将删除所有历史会话及消息记录,确定继续?",
+      description: `将删除 ${targets.length} 条未置顶会话及其消息记录(置顶会话保留),确定继续?`,
       destructiveLabel: "清空",
     })
     if (!ok) return
-    await clearAllConversations()
-  }, [clearAllConversations])
+    for (const c of targets) {
+      await removeConversation(c.id)
+    }
+  }, [conversations, removeConversation])
 
   const handleClearMessages = useCallback(async () => {
     await chatSession.clearMessages()
