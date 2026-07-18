@@ -307,24 +307,102 @@ export function buildSubmitKeymap(
 
 /**
  * 构建文件拖放的 dom event handler。
- * - dragover: 允许放置
- * - drop: 阻止 CodeMirror 自动读取文件内容并粘贴(必须),
- *         但不 stopPropagation,让事件冒泡到外层容器,以便 Wails 拦截。
+ *
+ * 职责:
+ * - dragover:  允许放置;顺便发出 `richeditor-file-drag-start` 自定义事件,
+ *              让外层容器可以据此设置"拖入中"的视觉态(灰色边框)。
+ *              同时启用一次性的 window 级兜底监听器,确保以下场景都能
+ *              可靠地清除视觉态:
+ *                * 拖出编辑器区域          → dragleave (window)
+ *                * 按 ESC 取消系统级拖拽    → keydown(Escape) / dragend
+ *                * 文件在编辑器外被 drop    → drop (window)
+ *                * 浏览器窗口失焦          → window.blur
+ *              浏览器对"OS 文件拖拽 + ESC"不会向 drop 目标派发 dragleave,
+ *              也不会派发 dragend(拖拽源在窗口外),因此必须在 window
+ *              层布置多重兜底。
+ * - dragleave: 仅当鼠标真的离开了编辑器(而非进入子节点)时才通知外层。
+ * - drop:      阻止 CodeMirror 自动读取文件内容并粘贴(必须),
+ *              并通知外层"拖放结束",清除视觉态。
+ *              不 stopPropagation,让事件冒泡到外层容器以便 Wails 拦截。
  */
+const DRAG_START_EVENT = "richeditor-file-drag-start"
+const DRAG_END_EVENT = "richeditor-file-drag-end"
+
+/** 触发一个冒泡的自定义事件,让外层容器同步状态 */
+function fireDragEvent(target: HTMLElement, name: string): void {
+  target.dispatchEvent(new CustomEvent(name, { bubbles: true }))
+}
+
+/**
+ * 为某个编辑器 DOM 安装一次性的 window 兜底监听器。
+ * 通过闭包内的 `installed` 标志避免重复安装(dragover 会持续触发)。
+ */
+const FALLBACK_INSTALLED = new WeakSet<HTMLElement>()
+
+function installDragFallback(dom: HTMLElement): void {
+  if (FALLBACK_INSTALLED.has(dom)) return
+  FALLBACK_INSTALLED.add(dom)
+
+  const cleanup = () => {
+    FALLBACK_INSTALLED.delete(dom)
+    window.removeEventListener("dragend", onEnd, true)
+    window.removeEventListener("drop", onEnd, true)
+    window.removeEventListener("dragleave", onWindowLeave, true)
+    window.removeEventListener("keydown", onKey, true)
+    window.removeEventListener("blur", onEnd, true)
+    fireDragEvent(dom, DRAG_END_EVENT)
+  }
+
+  const onEnd = () => cleanup()
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") cleanup()
+  }
+
+  // window 级 dragleave:当 relatedTarget 为 null 时,说明鼠标离开了整个窗口。
+  const onWindowLeave = (e: DragEvent) => {
+    if (e.relatedTarget === null) cleanup()
+  }
+
+  window.addEventListener("dragend", onEnd, true)
+  window.addEventListener("drop", onEnd, true)
+  window.addEventListener("dragleave", onWindowLeave, true)
+  window.addEventListener("keydown", onKey, true)
+  window.addEventListener("blur", onEnd, true)
+}
+
 export const fileDropHandlers: Extension = EditorView.domEventHandlers({
-  dragover(event) {
+  dragover(event, view) {
     if (event.dataTransfer?.types?.includes("Files")) {
       event.preventDefault()
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"
+      fireDragEvent(view.dom, DRAG_START_EVENT)
+      installDragFallback(view.dom)
       return true
     }
     return false
   },
-  drop(event) {
+  dragleave(event, view) {
+    // 仅当离开编辑器根节点(而不是移到子节点上)时才通知外层。
+    // 若 relatedTarget 仍位于编辑器内部,忽略。
+    const next = event.relatedTarget as Node | null
+    if (next && view.dom.contains(next)) return false
+    fireDragEvent(view.dom, DRAG_END_EVENT)
+    return false
+  },
+  drop(event, view) {
     if (event.dataTransfer?.types?.includes("Files")) {
       event.preventDefault()
+      fireDragEvent(view.dom, DRAG_END_EVENT)
       return true
     }
+    fireDragEvent(view.dom, DRAG_END_EVENT)
     return false
   },
 })
+
+/** 拖拽状态自定义事件的名字,供外层容器订阅 */
+export const RICH_EDITOR_DRAG_EVENTS = {
+  START: DRAG_START_EVENT,
+  END: DRAG_END_EVENT,
+} as const

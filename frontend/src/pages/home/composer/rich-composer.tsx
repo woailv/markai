@@ -7,6 +7,47 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react"
 
+/**
+ * 拖拽状态清除的通用兜底监听器安装函数。
+ *
+ * 背景:HTML5 拖放的原生事件对以下几种"取消场景"并不友好:
+ *   1. 按 ESC 取消系统级(OS)文件拖拽 —— 不会向落点派发 dragleave,
+ *      也不会派发 dragend(拖拽源在浏览器之外)。
+ *   2. 拖拽出窗口 —— dragleave 的 relatedTarget 为 null,若外层用
+ *      currentTarget === target 判断则会漏掉。
+ *   3. 在编辑器以外的地方 drop —— 落点节点不会收到任何 dragleave。
+ *   4. 窗口失焦(alt-tab 切走) —— 拖拽视觉态也应回退。
+ *
+ * 这里在 window 层统一兜底,保证上述任一场景发生后都能可靠地 clear 状态。
+ * 返回一个卸载函数,调用后所有监听器一并移除。
+ */
+function installDragCancelFallback(clear: () => void): () => void {
+  const doClear = () => clear()
+
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") clear()
+  }
+
+  // window 级 dragleave:relatedTarget 为 null 表示光标离开了整个窗口
+  const onWindowLeave = (e: DragEvent) => {
+    if (e.relatedTarget === null) clear()
+  }
+
+  window.addEventListener("dragend", doClear, true)
+  window.addEventListener("drop", doClear, true)
+  window.addEventListener("dragleave", onWindowLeave, true)
+  window.addEventListener("keydown", onKey, true)
+  window.addEventListener("blur", doClear, true)
+
+  return () => {
+    window.removeEventListener("dragend", doClear, true)
+    window.removeEventListener("drop", doClear, true)
+    window.removeEventListener("dragleave", onWindowLeave, true)
+    window.removeEventListener("keydown", onKey, true)
+    window.removeEventListener("blur", doClear, true)
+  }
+}
+
 import {
   RichEditor,
   type RichEditorHandle,
@@ -59,6 +100,18 @@ export function RichComposer({
   const [isDragOver, setIsDragOver] = useState(false)
   const editorRef = useRef<RichEditorHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  // 拖拽 enter/leave 计数器:处理"从父节点进入子节点时 dragleave 也会触发"
+  // 这个 HTML5 拖放的经典缺陷 —— 只有当计数归零时才真正认为拖出。
+  const dragCounterRef = useRef(0)
+  // 窗口级兜底监听器的卸载函数,只在计数 > 0 期间挂载。
+  const fallbackDisposerRef = useRef<(() => void) | null>(null)
+
+  const clearDragState = useCallback(() => {
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    fallbackDisposerRef.current?.()
+    fallbackDisposerRef.current = null
+  }, [])
 
   useEffect(() => {
     setDraft(doc)
@@ -118,25 +171,53 @@ export function RichComposer({
     [onToggleTemplate],
   )
 
+  const handleDragEnter = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer?.types?.includes("Files")) return
+    dragCounterRef.current += 1
+    if (!isDragOver) setIsDragOver(true)
+    // 首次进入时挂载窗口级兜底,应对 ESC / 拖出窗口 / 窗口失焦等取消场景
+    if (!fallbackDisposerRef.current) {
+      fallbackDisposerRef.current = installDragCancelFallback(clearDragState)
+    }
+  }
+
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
     if (e.dataTransfer?.types?.includes("Files")) {
       e.preventDefault()
       e.dataTransfer.dropEffect = "copy"
+      // 有些浏览器/场景 dragenter 早于 mount 触发或被吞,补位保证状态一致
       if (!isDragOver) setIsDragOver(true)
+      if (!fallbackDisposerRef.current) {
+        fallbackDisposerRef.current = installDragCancelFallback(clearDragState)
+      }
     }
   }
 
   const handleDragLeave = (e: ReactDragEvent<HTMLDivElement>) => {
-    if (e.currentTarget === e.target) setIsDragOver(false)
+    if (!e.dataTransfer?.types?.includes("Files")) return
+    // 使用计数器:每次 dragenter +1、dragleave -1,归零才代表真的离开根节点。
+    // 单靠 currentTarget === target 无法覆盖"拖出根节点边缘"的场景。
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
+      clearDragState()
+    }
   }
 
   const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
-    setIsDragOver(false)
+    clearDragState()
     if (e.dataTransfer?.types?.includes("Files")) {
       e.preventDefault()
     }
     // 不 stopPropagation,让 Wails 拦截器收到冒泡
   }
+
+  // 组件卸载时确保兜底监听器被移除
+  useEffect(() => {
+    return () => {
+      fallbackDisposerRef.current?.()
+      fallbackDisposerRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     const unsub = Events.On("files:dropped", (evt) => {
@@ -193,7 +274,7 @@ export function RichComposer({
 
       if (winner !== root) return
 
-      setIsDragOver(false)
+      clearDragState()
       if (hasCoords) {
         handle.insertFilesAtCoords(payload.paths, payload.x, payload.y)
       } else {
@@ -220,6 +301,7 @@ export function RichComposer({
     <div
       ref={rootRef}
       data-file-drop-target="true"
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

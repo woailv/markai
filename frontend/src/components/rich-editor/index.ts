@@ -1,4 +1,5 @@
 export { RichEditor } from "./rich-editor"
+export { RICH_EDITOR_DRAG_EVENTS } from "./extensions"
 export type {
   RichEditorHandle,
   RichEditorMode,
