@@ -112,9 +112,6 @@ func (s *TrayService) EnableTray() error {
 		s.app.Quit()
 	})
 	tray.SetMenu(menu)
-	// WindowOffset 控制附着窗口与托盘图标之间的间距。设为 0 使窗口
-	// 底边紧贴任务栏顶边,避免关闭后再次点击托盘图标唤出时出现缝隙。
-	tray.AttachWindow(s.window).WindowOffset(0)
 
 	// 拦截关闭:关闭按钮转为隐藏窗口,保持后台运行。
 	s.unhook = s.window.RegisterHook(events.Common.WindowClosing, func(e *application.WindowEvent) {
@@ -125,9 +122,8 @@ func (s *TrayService) EnableTray() error {
 	s.tray = tray
 	s.menu = menu
 
-	// 先把窗口摆到主屏右下角,再隐藏。这样即使首次通过非托盘点击路径
-	// (例如启动即托盘模式后由前端主动 Show)唤出,也不会在屏幕中央出现。
-	s.positionBottomRightLocked()
+	// 托盘模式仅承担"后台运行 + 托盘入口"职责,不改变主窗口 UI 形态,
+	// 也不再把窗口锚定到屏幕右下角,窗口的位置由用户自己控制。
 	s.window.Hide()
 	s.persistLocked(true)
 	return nil
@@ -189,38 +185,11 @@ func (s *TrayService) IsTrayActive() bool {
 }
 
 // showWindowLocked 在持锁状态下显示窗口。
-// 托盘模式下每次显示前重新贴至右下角,与 demo/systray-custom 表现一致。
+// 托盘只是图标入口,窗口显示按主 UI 的常规行为处理,不做位置吸附。
 func (s *TrayService) showWindowLocked() {
 	if s.window == nil {
 		return
 	}
-	if s.tray != nil {
-		s.positionBottomRightLocked()
-	}
 	s.window.Show()
 	s.window.Focus()
-}
-
-// positionBottomRightLocked 在持锁状态下把主窗口移动到主屏工作区右下角。
-// 依赖 Wails 应用与主窗口引用;任意一项缺失则静默返回,不阻塞主流程。
-// margin 为距工作区右下角的像素余量,与托盘窗口贴合的视觉留白一致。
-func (s *TrayService) positionBottomRightLocked() {
-	if s.app == nil || s.window == nil {
-		return
-	}
-	screen, err := s.window.GetScreen()
-	if err != nil || screen == nil {
-		return
-	}
-	// 右侧留少量视觉余量,底部与任务栏顶边完全贴齐 —— 底部若也留
-	// margin,会与系统状态栏之间出现一条明显缝隙,视觉上不连贯。
-	const (
-		marginRight  = 8
-		marginBottom = 0
-	)
-	width, height := s.window.Size()
-	// WorkArea 已排除任务栏区域,右下角坐标即工作区右下减去窗口尺寸。
-	x := screen.WorkArea.X + screen.WorkArea.Width - width - marginRight
-	y := screen.WorkArea.Y + screen.WorkArea.Height - height - marginBottom
-	s.window.SetPosition(x, y)
 }
