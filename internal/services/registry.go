@@ -58,6 +58,7 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 			application.NewService(dialogSvc),
 			application.NewService(recentSvc),
 			application.NewService(windowSvc),
+			application.NewService(NewClipboardService()),
 		},
 		Workspace: workspaceSvc,
 		Dialog:    dialogSvc,
