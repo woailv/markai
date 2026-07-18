@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
   ResizableHandle,
@@ -64,6 +64,13 @@ export default function HomePage() {
   const chatCollapsed = useRightPanelStore((s) => s.collapsed)
   const chatWidth = useRightPanelStore((s) => s.width)
   const setChatWidth = useRightPanelStore((s) => s.setWidth)
+
+  // 聊天面板全屏状态(非持久化,刷新后还原)
+  const [chatFullscreen, setChatFullscreen] = useState(false)
+  const toggleChatFullscreen = useCallback(
+    () => setChatFullscreen((v) => !v),
+    [],
+  )
 
   // ---------- 初始加载 ----------
   useEffect(() => {
@@ -175,6 +182,8 @@ export default function HomePage() {
       onRenameConversation={renameConversation}
       onTogglePinConversation={setPinnedConversation}
       onClearAllConversations={handleClearAllConversations}
+      fullscreen={chatFullscreen}
+      onToggleFullscreen={toggleChatFullscreen}
     />
   )
 
@@ -185,6 +194,7 @@ export default function HomePage() {
           chatCollapsed={chatCollapsed}
           chatWidth={chatWidth}
           setChatWidth={setChatWidth}
+          chatFullscreen={chatFullscreen}
           chatPanel={
             <ChatPanel
               messages={chatSession.messages}
@@ -216,6 +226,7 @@ interface MainLayoutProps {
   chatCollapsed: boolean
   chatWidth: number
   setChatWidth: (w: number) => void
+  chatFullscreen: boolean
   chatPanel: React.ReactNode
 }
 
@@ -229,6 +240,7 @@ function MainLayout({
   chatCollapsed,
   chatWidth,
   setChatWidth,
+  chatFullscreen,
   chatPanel,
 }: MainLayoutProps) {
   const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
@@ -253,6 +265,14 @@ function MainLayout({
       <TabContent />
     </div>
   )
+
+  // 全屏模式:所有 hooks 之后再判断,避免 hooks 数量变化。
+  // 仅渲染 ChatPanel,占满整个主区域。
+  if (chatFullscreen && !chatCollapsed) {
+    return (
+      <div className="flex min-h-0 flex-1 overflow-hidden">{chatPanel}</div>
+    )
+  }
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
