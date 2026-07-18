@@ -3,7 +3,7 @@
 
 /**
  * WindowService 管理主窗口的用户可持久化设置。
- * 目前实现:置顶状态 (Always On Top)。
+ * 目前实现:置顶状态 (Always On Top)、显示/隐藏(供托盘模式调用)。
  * @module
  */
 
@@ -20,6 +20,21 @@ import * as $models from "./models.js";
  */
 export function GetAlwaysOnTop(): $CancellablePromise<$models.AlwaysOnTopState | null> {
     return $Call.ByID(4027921382);
+}
+
+/**
+ * GetVisibility 返回当前窗口可见性状态。
+ */
+export function GetVisibility(): $CancellablePromise<$models.WindowVisibilityState | null> {
+    return $Call.ByID(945269371);
+}
+
+/**
+ * Hide 隐藏主窗口。托盘模式下由托盘菜单/关闭拦截等场景调用。
+ * 若 setter 未注入则返回错误;若窗口已处于隐藏状态则为幂等操作。
+ */
+export function Hide(): $CancellablePromise<$models.WindowVisibilityState | null> {
+    return $Call.ByID(3641347237);
 }
 
 /**
@@ -63,6 +78,14 @@ export function SetEmitter(e: $models.Emitter): $CancellablePromise<void> {
 }
 
 /**
+ * SetInitialVisibility 由 app 层在创建窗口后调用,同步内存中的初始可见性。
+ * 托盘模式启动时应传 false。
+ */
+export function SetInitialVisibility(visible: boolean): $CancellablePromise<void> {
+    return $Call.ByID(4015671457, visible);
+}
+
+/**
  * SetSetter 注入窗口置顶设置器。app 层在创建窗口后调用。
  */
 export function SetSetter(setter: $models.AlwaysOnTopSetter): $CancellablePromise<void> {
@@ -70,8 +93,31 @@ export function SetSetter(setter: $models.AlwaysOnTopSetter): $CancellablePromis
 }
 
 /**
+ * SetVisibilitySetter 注入窗口显示/隐藏设置器。app 层在创建窗口后调用。
+ * setter 语义:传入 true 表示显示窗口(必要时置前),false 表示隐藏窗口。
+ */
+export function SetVisibilitySetter(setter: $models.WindowVisibilitySetter): $CancellablePromise<void> {
+    return $Call.ByID(1460193488, setter);
+}
+
+/**
+ * Show 显示主窗口。托盘模式下由托盘图标点击/菜单唤出等场景调用。
+ * 若 setter 未注入则返回错误;若窗口已处于显示状态则为幂等操作。
+ */
+export function Show(): $CancellablePromise<$models.WindowVisibilityState | null> {
+    return $Call.ByID(1307937268);
+}
+
+/**
  * ToggleAlwaysOnTop 翻转当前置顶状态。
  */
 export function ToggleAlwaysOnTop(): $CancellablePromise<$models.AlwaysOnTopState | null> {
     return $Call.ByID(374554492);
+}
+
+/**
+ * ToggleVisibility 翻转当前显示/隐藏状态,便于托盘图标单击等场景使用。
+ */
+export function ToggleVisibility(): $CancellablePromise<$models.WindowVisibilityState | null> {
+    return $Call.ByID(676667581);
 }

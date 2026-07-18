@@ -14,15 +14,22 @@ import (
 // app 层在创建窗口后注入,通常是 window.SetAlwaysOnTop 的闭包。
 type AlwaysOnTopSetter func(enabled bool)
 
+// WindowVisibilitySetter 将"显示/隐藏窗口"能力抽象为一个函数。
+// app 层在创建窗口后注入,通常是 window.Show/window.Hide 的闭包封装。
+type WindowVisibilitySetter func(visible bool)
+
 // WindowService 管理主窗口的用户可持久化设置。
-// 目前实现:置顶状态 (Always On Top)。
+// 目前实现:置顶状态 (Always On Top)、显示/隐藏(供托盘模式调用)。
 type WindowService struct {
-	db      *db.DB
-	mu      sync.RWMutex
-	setter  AlwaysOnTopSetter
-	emitter Emitter
+	db            *db.DB
+	mu            sync.RWMutex
+	setter        AlwaysOnTopSetter
+	visibilitySet WindowVisibilitySetter
+	emitter       Emitter
 	// cached 反映当前应用中的置顶状态,避免频繁查库。
 	cached bool
+	// visible 反映当前窗口的可见性状态(内存缓存)。
+	visible bool
 }
 
 // NewWindowService 构造 WindowService。调用方需负责执行 AutoMigrate(&WindowSetting{})。
@@ -87,6 +94,22 @@ func (s *WindowService) saveBoolSetting(key string, enabled bool) error {
 func (s *WindowService) SetSetter(setter AlwaysOnTopSetter) {
 	s.mu.Lock()
 	s.setter = setter
+	s.mu.Unlock()
+}
+
+// SetVisibilitySetter 注入窗口显示/隐藏设置器。app 层在创建窗口后调用。
+// setter 语义:传入 true 表示显示窗口(必要时置前),false 表示隐藏窗口。
+func (s *WindowService) SetVisibilitySetter(setter WindowVisibilitySetter) {
+	s.mu.Lock()
+	s.visibilitySet = setter
+	s.mu.Unlock()
+}
+
+// SetInitialVisibility 由 app 层在创建窗口后调用,同步内存中的初始可见性。
+// 托盘模式启动时应传 false。
+func (s *WindowService) SetInitialVisibility(visible bool) {
+	s.mu.Lock()
+	s.visible = visible
 	s.mu.Unlock()
 }
 
@@ -157,4 +180,63 @@ func (s *WindowService) setCached(enabled bool) {
 	s.mu.Lock()
 	s.cached = enabled
 	s.mu.Unlock()
+}
+
+// GetVisibility 返回当前窗口可见性状态。
+func (s *WindowService) GetVisibility() (*WindowVisibilityState, error) {
+	s.mu.RLock()
+	v := s.visible
+	s.mu.RUnlock()
+	return &WindowVisibilityState{Visible: v}, nil
+}
+
+// Hide 隐藏主窗口。托盘模式下由托盘菜单/关闭拦截等场景调用。
+// 若 setter 未注入则返回错误;若窗口已处于隐藏状态则为幂等操作。
+func (s *WindowService) Hide() (*WindowVisibilityState, error) {
+	return s.applyVisibility(false)
+}
+
+// Show 显示主窗口。托盘模式下由托盘图标点击/菜单唤出等场景调用。
+// 若 setter 未注入则返回错误;若窗口已处于显示状态则为幂等操作。
+func (s *WindowService) Show() (*WindowVisibilityState, error) {
+	return s.applyVisibility(true)
+}
+
+// ToggleVisibility 翻转当前显示/隐藏状态,便于托盘图标单击等场景使用。
+func (s *WindowService) ToggleVisibility() (*WindowVisibilityState, error) {
+	s.mu.RLock()
+	next := !s.visible
+	s.mu.RUnlock()
+	return s.applyVisibility(next)
+}
+
+// applyVisibility 统一处理显示/隐藏,含 setter 校验、缓存更新与事件广播。
+func (s *WindowService) applyVisibility(visible bool) (*WindowVisibilityState, error) {
+	s.mu.Lock()
+	setter := s.visibilitySet
+	if setter == nil {
+		s.mu.Unlock()
+		return nil, errors.New("window: visibility setter not injected")
+	}
+	if s.visible == visible {
+		s.mu.Unlock()
+		return &WindowVisibilityState{Visible: visible}, nil
+	}
+	s.visible = visible
+	s.mu.Unlock()
+
+	setter(visible)
+	s.emitVisibilityChanged(visible)
+	return &WindowVisibilityState{Visible: visible}, nil
+}
+
+// emitVisibilityChanged 广播可见性变更事件。emitter 未注入时静默。
+func (s *WindowService) emitVisibilityChanged(visible bool) {
+	s.mu.RLock()
+	e := s.emitter
+	s.mu.RUnlock()
+	if e == nil {
+		return
+	}
+	e.EmitEvent(WindowEventVisibilityChanged, WindowVisibilityState{Visible: visible})
 }

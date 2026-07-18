@@ -135,8 +135,9 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop, startInTray)
 	registerFilesDropForward(wailsApp, mainWin, logger)
 
-	// 注入置顶设置器与事件推送。setter 通过闭包捕获主窗口,
-	// 使 WindowService 无需感知 Wails 类型。
+	// 注入置顶设置器、显示/隐藏设置器与事件推送。setter 通过闭包
+	// 捕获主窗口,使 WindowService 无需感知 Wails 类型。
+	// 初始可见性与 startInTray 相反:托盘启动时窗口先隐藏。
 	if registry.Window != nil {
 		registry.Window.SetEmitter(emitter)
 		registry.Window.SetSetter(func(enabled bool) {
@@ -144,6 +145,17 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 				mainWin.SetAlwaysOnTop(enabled)
 			}
 		})
+		registry.Window.SetVisibilitySetter(func(visible bool) {
+			if mainWin == nil {
+				return
+			}
+			if visible {
+				mainWin.Show()
+			} else {
+				mainWin.Hide()
+			}
+		})
+		registry.Window.SetInitialVisibility(!startInTray)
 	}
 
 	// 注入托盘依赖:Wails 应用、主窗口引用与持久化回调。

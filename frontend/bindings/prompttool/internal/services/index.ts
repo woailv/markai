@@ -68,6 +68,8 @@ export type {
     UndoBatchResult,
     UpdateInput,
     UpdateMessageInput,
+    WindowVisibilitySetter,
+    WindowVisibilityState,
     WorkspaceEntry,
     WorkspaceRootInfo,
     WriteFileInput,

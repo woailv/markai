@@ -409,6 +409,19 @@ export interface UpdateMessageInput {
 }
 
 /**
+ * WindowVisibilitySetter 将"显示/隐藏窗口"能力抽象为一个函数。
+ * app 层在创建窗口后注入,通常是 window.Show/window.Hide 的闭包封装。
+ */
+export type WindowVisibilitySetter = any;
+
+/**
+ * WindowVisibilityState 返回给前端的窗口可见性状态。
+ */
+export interface WindowVisibilityState {
+    "visible": boolean;
+}
+
+/**
  * WorkspaceEntry 目录树中的单项元数据。
  * 字段设计与 FileEntry 保持一致的命名风格,并增加 IsHidden / IsSymlink
  * 供前端做视觉区分。

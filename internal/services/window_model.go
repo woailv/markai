@@ -5,6 +5,9 @@ const (
 	// WindowEventAlwaysOnTopChanged 前端可订阅的置顶状态变更事件。
 	WindowEventAlwaysOnTopChanged = "window:alwaysOnTop:changed"
 
+	// WindowEventVisibilityChanged 前端可订阅的窗口显示/隐藏变更事件。
+	WindowEventVisibilityChanged = "window:visibility:changed"
+
 	// windowSettingKeyAlwaysOnTop 持久化置顶状态所用的 key。
 	windowSettingKeyAlwaysOnTop = "always_on_top"
 
@@ -30,4 +33,9 @@ type SetAlwaysOnTopInput struct {
 // AlwaysOnTopState 返回给前端的置顶状态。
 type AlwaysOnTopState struct {
 	Enabled bool `json:"enabled"`
+}
+
+// WindowVisibilityState 返回给前端的窗口可见性状态。
+type WindowVisibilityState struct {
+	Visible bool `json:"visible"`
 }
