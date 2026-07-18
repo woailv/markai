@@ -255,18 +255,18 @@ export function ChatPanel({
         </div>
       </ChatAreaContextMenu>
 
-      <div className="shrink-0 border-t bg-background/50 px-4 py-3">
-        <div className="w-full">
-          <RichComposer
-            onSend={onSend}
-            templates={templates}
-            selectedTemplateIds={selectedTemplateIds}
-            onToggleTemplate={onToggleTemplate}
-            onCreateTemplate={onCreateTemplate}
-            onEditTemplate={onEditTemplate}
-            onDeleteTemplate={onDeleteTemplate}
-          />
-        </div>
+      {/* Zed 风格无边输入区:外层不加水平 padding,让 RichComposer 顶部分隔线
+          能与左右两侧的垂直分割线无缝相接;水平留白由 RichComposer 内部承担 */}
+      <div className="shrink-0 pb-2 pt-0">
+        <RichComposer
+          onSend={onSend}
+          templates={templates}
+          selectedTemplateIds={selectedTemplateIds}
+          onToggleTemplate={onToggleTemplate}
+          onCreateTemplate={onCreateTemplate}
+          onEditTemplate={onEditTemplate}
+          onDeleteTemplate={onDeleteTemplate}
+        />
       </div>
 
       <AlertDialog

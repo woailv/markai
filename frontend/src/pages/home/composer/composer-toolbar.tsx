@@ -1,7 +1,6 @@
 import { BookMarked, Send, Settings2 } from "lucide-react"
 import { useMemo } from "react"
 
-import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -87,17 +86,25 @@ export function ComposerToolbar({
         onRemove={onToggleTemplate}
       />
 
-      <div className="ml-auto flex shrink-0 items-center gap-1">
-        <Button
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        {/* Zed 风格:发送改为纯图标幽灵按钮
+            - 不可发送时:muted 颜色 + 禁用
+            - 可发送时:primary 颜色,hover 出淡 primary 背景 */}
+        <button
           type="button"
-          size="sm"
           disabled={!canSend}
           onClick={onSend}
-          className="h-6 gap-1 px-2 text-xs"
+          title="发送 (Enter)"
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            canSend
+              ? "text-primary hover:bg-primary/10"
+              : "text-muted-foreground",
+          )}
         >
-          <Send className="h-3 w-3" />
-          发送
-        </Button>
+          <Send className="h-3.5 w-3.5" />
+        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger

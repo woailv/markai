@@ -211,6 +211,12 @@ export function RichComposer({
       .trim().length > 0
 
   return (
+    // Zed 风格:
+    //   - 无外框、无圆角、无背景色块;仅顶部一条极淡分隔线(border-t border-border/40)
+    //     用于把输入区从消息区"轻描淡写"地分隔开
+    //   - 聚焦时不出现 ring/border 颜色变化,让位给内部光标
+    //   - 只有拖放时,整块面板才用 primary 高亮(顶线加粗 + 极淡 tinted 背景),
+    //     作为清晰的落点反馈
     <div
       ref={rootRef}
       data-file-drop-target="true"
@@ -218,13 +224,12 @@ export function RichComposer({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex flex-col rounded-xl border bg-background transition-colors",
-        "focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-ring/30",
-        isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
-        "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
+        "flex flex-col border-t border-border/40 bg-transparent transition-colors",
+        isDragOver && "border-t-primary bg-primary/5",
+        "[&.file-drop-target-active]:border-t-primary [&.file-drop-target-active]:bg-primary/5",
       )}
     >
-      <div className="px-2 pb-1.5">
+      <div className="px-5 pb-1 pt-2.5">
         <RichEditor
           value={doc}
           onChange={setDoc}
@@ -236,17 +241,17 @@ export function RichComposer({
           className="w-full"
         />
       </div>
-      <div className="px-2 pb-1 pt-1.5">
+      <div className="px-5 pb-0.5 pt-1">
         <ComposerToolbar
-            templates={templates}
-            selectedIds={selectedTemplateIds}
-            onToggleTemplate={handleToggleTemplate}
-            onCreateTemplate={onCreateTemplate}
-            onEditTemplate={onEditTemplate}
-            onDeleteTemplate={onDeleteTemplate}
-            isDragOver={isDragOver}
-            canSend={canSend}
-            onSend={send}
+          templates={templates}
+          selectedIds={selectedTemplateIds}
+          onToggleTemplate={handleToggleTemplate}
+          onCreateTemplate={onCreateTemplate}
+          onEditTemplate={onEditTemplate}
+          onDeleteTemplate={onDeleteTemplate}
+          isDragOver={isDragOver}
+          canSend={canSend}
+          onSend={send}
         />
       </div>
     </div>
