@@ -35,7 +35,6 @@ func NewMain(app *application.App, cfg config.WindowConfig, alwaysOnTop bool, st
 		AlwaysOnTop:     alwaysOnTop || startInTray,
 		Hidden:          startInTray,
 		Frameless:       startInTray,
-		DisableResize:   startInTray,
 		Windows: application.WindowsWindow{
 			HiddenOnTaskbar: startInTray,
 		},
