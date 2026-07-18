@@ -195,11 +195,11 @@ export function HistoryPopover({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={() => {
                 if (pendingDeleteId !== null) onDelete(pendingDeleteId)
                 setPendingDeleteId(null)
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               删除
             </AlertDialogAction>

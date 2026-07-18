@@ -119,12 +119,7 @@ export default function HomePage() {
 
   const handleDeleteConversation = useCallback(
     async (id: number) => {
-      const ok = await confirmDestructive({
-        title: "删除会话",
-        description: "将删除该会话及所有消息记录,确定继续?",
-        destructiveLabel: "删除",
-      })
-      if (!ok) return
+      // 二次确认已在 HistoryPopover 内部通过 AlertDialog 完成,此处直接删除
       await removeConversation(id)
     },
     [removeConversation],
