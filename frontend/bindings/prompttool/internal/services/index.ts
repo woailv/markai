@@ -9,6 +9,7 @@ import * as GreetService from "./greetservice.js";
 import * as PromptTemplateService from "./prompttemplateservice.js";
 import * as RecentService from "./recentservice.js";
 import * as SnapshotService from "./snapshotservice.js";
+import * as TrayService from "./trayservice.js";
 import * as WindowService from "./windowservice.js";
 import * as WorkspaceService from "./workspaceservice.js";
 export {
@@ -20,6 +21,7 @@ export {
     PromptTemplateService,
     RecentService,
     SnapshotService,
+    TrayService,
     WindowService,
     WorkspaceService
 };

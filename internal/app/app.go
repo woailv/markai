@@ -130,6 +130,13 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		})
 	}
 
+	// 注入托盘依赖:Wails 应用与主窗口引用。
+	// TrayService 由前端主动调用 EnableTray 触发进入托盘模式。
+	if registry.Tray != nil {
+		registry.Tray.SetApp(wailsApp)
+		registry.Tray.SetWindow(mainWin)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	StartTimeTicker(ctx, wailsApp)
 

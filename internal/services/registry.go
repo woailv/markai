@@ -11,13 +11,14 @@ import (
 
 // RegistryResult 打包 Registry 的产物。除了 Wails 使用的 Service 切片,
 // 还额外返回需要在 app 层做生命周期管理的 Service 引用
-// (WorkspaceService, DialogService, RecentService, WindowService)。
+// (WorkspaceService, DialogService, RecentService, WindowService, TrayService)。
 type RegistryResult struct {
 	Services  []application.Service
 	Workspace *WorkspaceService
 	Dialog    *DialogService
 	Recent    *RecentService
 	Window    *WindowService
+	Tray      *TrayService
 }
 
 // Registry 汇总所有暴露给前端的 Service。
@@ -47,6 +48,7 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 	workspaceSvc := NewWorkspaceService(config.DefaultWorkspace())
 	workspaceSvc.setRecent(recentSvc)
 	dialogSvc := NewDialogService()
+	traySvc := NewTrayService()
 	return &RegistryResult{
 		Services: []application.Service{
 			application.NewService(NewGreetService()),
@@ -59,10 +61,12 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 			application.NewService(recentSvc),
 			application.NewService(windowSvc),
 			application.NewService(NewClipboardService()),
+			application.NewService(traySvc),
 		},
 		Workspace: workspaceSvc,
 		Dialog:    dialogSvc,
 		Recent:    recentSvc,
 		Window:    windowSvc,
+		Tray:      traySvc,
 	}, nil
 }
