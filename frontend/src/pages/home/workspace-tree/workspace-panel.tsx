@@ -28,17 +28,34 @@ import {
   siblingNamesOf,
 } from "./file-ops"
 import { InlineNameEditor } from "./inline-name-editor"
+import { pasteFromClipboardData, pasteFromPaths } from "./paste-actions"
+import { resolvePasteTarget, resolveTargetFromElement } from "./paste-target"
 import { computeVisibleOrder, emitFilesDropped } from "./selection-utils"
-import { ToastHost } from "./toast"
+import { ToastHost, toast } from "./toast"
 import { WorkspaceToolbar } from "./toolbar"
 import { TreeNode } from "./tree-node"
 import type { ContextMenuState } from "./types"
+import { useClipboardStore } from "./use-clipboard-store"
 import { useEditingStore } from "./use-editing-state"
 import {
   createDirectory as createDirOp,
   createFile as createFileOp,
 } from "./file-ops"
 import { refreshRoot, useWorkspaceEvents } from "./use-workspace-events"
+
+/** DataTransfer 中承载"应用内选中路径"的自定义 MIME。 */
+const INTERNAL_MIME = "application/x-workspace-paths"
+
+/** 判断当前焦点是否在真正的输入区域,决定是否要放行原生行为。 */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === "INPUT" || tag === "TEXTAREA") return true
+  if (target.isContentEditable) return true
+  if (target.closest(".cm-editor")) return true
+  if (target.closest("[contenteditable='true']")) return true
+  return false
+}
 
 /**
  * WorkspacePanel 工作区目录树的内容体。
@@ -217,18 +234,23 @@ function TreeArea() {
 
   /**
    * 从树里拖出条目:若当前节点已在多选内,则整个多选被拖走;
-   * 否则仅拖走该节点。落点由 dragend + elementsFromPoint 决定,
-   * 通过 files:dropped 事件复用输入框/编辑器现成的插入逻辑。
+   * 否则仅拖走该节点。
+   *
+   * DataTransfer 承载三份数据以覆盖不同接收方:
+   *  - INTERNAL_MIME:应用内识别(面板 onDrop 优先读)
+   *  - text/plain:降级 / 外部编辑器
+   * dragend + elementsFromPoint 走 files:dropped 事件,兼容 RichEditor 输入框。
    */
   const handleDragStart = useCallback((e: React.DragEvent, path: string) => {
     const state = useWorkspaceStore.getState()
     const selected = state.selectedPaths.has(path)
       ? Array.from(state.selectedPaths)
       : [path]
-    e.dataTransfer.effectAllowed = "copy"
-    // 写点内容以让浏览器认为这是有效拖拽(实际不消费)
+    e.dataTransfer.effectAllowed = "copyMove"
     try {
-      e.dataTransfer.setData("application/x-workspace-paths", JSON.stringify(selected))
+      const payload = JSON.stringify(selected)
+      e.dataTransfer.setData(INTERNAL_MIME, payload)
+      e.dataTransfer.setData("text/plain", selected.join("\n"))
     } catch {
       /* ignore */
     }
@@ -250,6 +272,187 @@ function TreeArea() {
     },
     [clearSelection],
   )
+
+  // ---- 拖入(系统资源管理器 / 应用内)与剪贴板粘贴 ----
+
+  const [dragOver, setDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
+  const lastPasteAtRef = useRef(0)
+
+  /** 200ms 内的 Ctrl+V 只触发一次,防止长按/重复触发。 */
+  const shouldDebouncePaste = useCallback(() => {
+    const now = Date.now()
+    if (now - lastPasteAtRef.current < 200) return true
+    lastPasteAtRef.current = now
+    return false
+  }, [])
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    // 只在真的携带数据时高亮
+    const types = e.dataTransfer?.types
+    if (!types) return
+    if (
+      !Array.from(types).some(
+        (t) =>
+          t === "Files" ||
+          t === "text/uri-list" ||
+          t === INTERNAL_MIME,
+      )
+    ) {
+      return
+    }
+    dragCounterRef.current += 1
+    setDragOver(true)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    // 拒绝没有可识别载荷的拖拽
+    const types = e.dataTransfer?.types
+    if (!types) return
+    if (
+      !Array.from(types).some(
+        (t) =>
+          t === "Files" ||
+          t === "text/uri-list" ||
+          t === INTERNAL_MIME,
+      )
+    ) {
+      return
+    }
+    e.preventDefault()
+    // 应用内且按 Shift → move;否则 copy
+    const isInternal = Array.from(types).includes(INTERNAL_MIME)
+    if (isInternal && e.shiftKey) {
+      e.dataTransfer.dropEffect = "move"
+    } else {
+      e.dataTransfer.dropEffect = "copy"
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((_e: React.DragEvent) => {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) {
+      setDragOver(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      dragCounterRef.current = 0
+      setDragOver(false)
+
+      const dt = e.dataTransfer
+      if (!dt) return
+
+      const target = resolveTargetFromElement(e.target) ?? resolvePasteTarget()
+      if (!target) {
+        toast.error("无法粘贴", "未设置工作区目录")
+        return
+      }
+
+      // 优先识别应用内拖拽
+      const internal = safeReadData(dt, INTERNAL_MIME)
+      if (internal) {
+        let paths: string[] = []
+        try {
+          const parsed = JSON.parse(internal)
+          if (Array.isArray(parsed))
+            paths = parsed.filter((p) => typeof p === "string")
+        } catch {
+          /* ignore */
+        }
+        if (paths.length === 0) return
+        // 应用内默认 copy,按住 Shift 改为 cut(移动)
+        // 注:与 IDEA 不同(IDEA 默认移动,按 Ctrl 复制);此处按快捷键更少歧义的约定。
+        const cut = e.shiftKey
+        await pasteFromPaths(paths, target, cut)
+        return
+      }
+
+      // 外部拖入:uri-list 或 files
+      await pasteFromClipboardData(dt, target)
+    },
+    [],
+  )
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    if (isEditableTarget(e.target)) return
+    const target = resolvePasteTarget()
+    if (!target) return
+    if (shouldDebouncePaste()) {
+      e.preventDefault()
+      return
+    }
+    e.preventDefault()
+    void pasteFromClipboardData(e.clipboardData, target)
+  }, [shouldDebouncePaste])
+
+  // 键盘剪贴板:Ctrl/Cmd + C / X / V。绑定到 window,焦点检测放到回调里。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (editing) return
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+      const key = e.key.toLowerCase()
+      if (key !== "c" && key !== "x" && key !== "v") return
+
+      // 面板必须获得过焦点或选择集非空,否则不拦截
+      // (更保守:若焦点在编辑器/输入框内直接放行)
+      if (isEditableTarget(document.activeElement)) return
+
+      // 面板容器未获得焦点也不管(避免抢全局)
+      const panel = panelRootRef.current
+      if (!panel) return
+      if (!panel.contains(document.activeElement)) return
+
+      if (key === "c" || key === "x") {
+        const state = useWorkspaceStore.getState()
+        const paths =
+          state.selectedPaths.size > 0
+            ? Array.from(state.selectedPaths)
+            : state.selectedPath
+              ? [state.selectedPath]
+              : []
+        if (paths.length === 0) return
+        e.preventDefault()
+        useClipboardStore
+          .getState()
+          .setInternal(paths, key === "c" ? "copy" : "cut")
+        toast.info(
+          key === "c" ? "已复制" : "已剪切",
+          paths.length > 1 ? `${paths.length} 项` : undefined,
+        )
+        return
+      }
+
+      // key === "v"
+      const clip = useClipboardStore.getState()
+      if (clip.isEmpty()) return
+      if (shouldDebouncePaste()) {
+        e.preventDefault()
+        return
+      }
+      const target = resolvePasteTarget()
+      if (!target) {
+        toast.error("无法粘贴", "未设置工作区目录")
+        e.preventDefault()
+        return
+      }
+      e.preventDefault()
+      const cut = clip.mode === "cut"
+      const paths = [...clip.paths]
+      void pasteFromPaths(paths, target, cut).then((result) => {
+        if (cut && result.length > 0) {
+          useClipboardStore.getState().clear()
+        }
+      })
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [editing, shouldDebouncePaste])
+
+  const panelRootRef = useRef<HTMLDivElement>(null)
 
   const handleSelectRoot = useCallback(async () => {
     let picked: string | undefined
@@ -290,7 +493,12 @@ function TreeArea() {
   const rootAccessible = watchStatus !== "error"
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div
+      ref={panelRootRef}
+      className="flex min-h-0 flex-1 flex-col outline-none"
+      tabIndex={0}
+      onPaste={handlePaste}
+    >
       {watchStatus === "degraded" && (
         <StatusBar
           tone="warn"
@@ -304,8 +512,16 @@ function TreeArea() {
 
       <div
         ref={scrollAreaRef}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1"
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 transition-colors",
+          dragOver &&
+            "bg-primary/5 outline outline-2 -outline-offset-2 outline-primary/40",
+        )}
         onMouseDown={handleBlankMouseDown}
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         {!hasRoot ? (
           <EmptyRoot onChoose={handleSelectRoot} />
@@ -391,6 +607,14 @@ function TreeArea() {
 function basenameOf(p: string): string {
   const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
   return idx >= 0 ? p.slice(idx + 1) : p
+}
+
+function safeReadData(dt: DataTransfer, type: string): string {
+  try {
+    return dt.getData(type) || ""
+  } catch {
+    return ""
+  }
 }
 
 function StatusBar({
