@@ -32,6 +32,22 @@ export function LoadPersistedAlwaysOnTop(): $CancellablePromise<boolean> {
 }
 
 /**
+ * LoadPersistedTrayMode 从数据库读取上次保存的"启动即托盘"偏好。
+ * 记录不存在时返回 false。app 层在配置 Wails Options 前调用。
+ */
+export function LoadPersistedTrayMode(): $CancellablePromise<boolean> {
+    return $Call.ByID(3512391793);
+}
+
+/**
+ * SavePersistedTrayMode 持久化托盘模式偏好,由 TrayService 在
+ * EnableTray/DisableTray 成功后回调。
+ */
+export function SavePersistedTrayMode(enabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3283873838, enabled);
+}
+
+/**
  * SetAlwaysOnTop 设置置顶状态,持久化并应用到窗口。
  * 成功后广播 WindowEventAlwaysOnTopChanged。
  */

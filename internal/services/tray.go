@@ -21,6 +21,11 @@ import (
 //
 // TrayService 不直接依赖 window 包,主窗口通过 SetWindow 由 app 层注入,
 // 避免 services -> window 的循环依赖。
+// TrayModePersister 持久化"当前是否处于托盘模式"偏好的回调。
+// 由 app 层注入,通常是 WindowService.SavePersistedTrayMode 的闭包,
+// 避免 TrayService 反向依赖 WindowService。
+type TrayModePersister func(enabled bool) error
+
 type TrayService struct {
 	mu sync.Mutex
 
@@ -30,6 +35,7 @@ type TrayService struct {
 	menu      *application.Menu
 	unhook    func()
 	iconData  []byte
+	persister TrayModePersister
 }
 
 // NewTrayService 创建 TrayService。app 与 window 依赖需在 app 层注入。
@@ -58,6 +64,13 @@ func (s *TrayService) SetIcon(data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.iconData = data
+}
+
+// SetPersister 注入托盘模式持久化回调。
+func (s *TrayService) SetPersister(p TrayModePersister) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.persister = p
 }
 
 // EnableTray 启用托盘模式:隐藏主窗口并创建托盘图标与菜单。
@@ -111,6 +124,7 @@ func (s *TrayService) EnableTray() error {
 	s.menu = menu
 
 	s.window.Hide()
+	s.persistLocked(true)
 	return nil
 }
 
@@ -138,7 +152,17 @@ func (s *TrayService) DisableTray() error {
 		s.window.Show()
 		s.window.Focus()
 	}
+	s.persistLocked(false)
 	return nil
+}
+
+// persistLocked 在持锁状态下写入托盘模式偏好。失败静默(不阻塞主流程),
+// 因为持久化仅用于下次启动恢复,当次运行时状态已通过其他路径生效。
+func (s *TrayService) persistLocked(enabled bool) {
+	if s.persister == nil {
+		return
+	}
+	_ = s.persister(enabled)
 }
 
 // ShowWindow 主动显示并聚焦主窗口(供前端在托盘模式下唤出窗口)。

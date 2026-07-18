@@ -7,6 +7,9 @@ const (
 
 	// windowSettingKeyAlwaysOnTop 持久化置顶状态所用的 key。
 	windowSettingKeyAlwaysOnTop = "always_on_top"
+
+	// windowSettingKeyTrayMode 持久化"启动即托盘模式"偏好所用的 key。
+	windowSettingKeyTrayMode = "tray_mode"
 )
 
 // WindowSetting 以 key-value 方式持久化窗口相关设置。

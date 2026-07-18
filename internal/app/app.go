@@ -67,6 +67,19 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: init services: %w", err)
 	}
 
+	// 读取托盘模式偏好。若上次退出时处于托盘模式,本次以"托盘常驻"
+	// 形态启动:Windows 下禁用"最后窗口关闭即退出",配合窗口隐藏
+	// 实现与 demo/systray-custom 一致的后台运行体验。
+	// 读取失败降级为 false,不阻塞启动。
+	startInTray := false
+	if registry.Window != nil {
+		if v, err := registry.Window.LoadPersistedTrayMode(); err != nil {
+			logger.Error("load persisted tray mode", "err", err)
+		} else {
+			startInTray = v
+		}
+	}
+
 	wailsApp := application.New(application.Options{
 		Name:        cfg.Name,
 		Description: cfg.Description,
@@ -75,7 +88,10 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 			Handler: application.AssetFileServerFS(assets),
 		},
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ApplicationShouldTerminateAfterLastWindowClosed: !startInTray,
+		},
+		Windows: application.WindowsOptions{
+			DisableQuitOnLastWindowClosed: startInTray,
 		},
 		KeyBindings: map[string]func(window application.Window){
 			"F12": func(window application.Window) {
@@ -116,7 +132,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		}
 	}
 
-	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop)
+	mainWin := window.NewMain(wailsApp, config.DefaultWindow(), alwaysOnTop, startInTray)
 	registerFilesDropForward(wailsApp, mainWin, logger)
 
 	// 注入置顶设置器与事件推送。setter 通过闭包捕获主窗口,
@@ -130,11 +146,20 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		})
 	}
 
-	// 注入托盘依赖:Wails 应用与主窗口引用。
-	// TrayService 由前端主动调用 EnableTray 触发进入托盘模式。
+	// 注入托盘依赖:Wails 应用、主窗口引用与持久化回调。
+	// TrayService 由前端主动调用 EnableTray 触发进入托盘模式;
+	// 若启动时已处于托盘模式,则在此处直接激活,恢复上次形态。
 	if registry.Tray != nil {
 		registry.Tray.SetApp(wailsApp)
 		registry.Tray.SetWindow(mainWin)
+		if registry.Window != nil {
+			registry.Tray.SetPersister(registry.Window.SavePersistedTrayMode)
+		}
+		if startInTray {
+			if err := registry.Tray.EnableTray(); err != nil {
+				logger.Error("enable tray on startup", "err", err)
+			}
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

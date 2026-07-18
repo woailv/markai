@@ -37,18 +37,50 @@ func NewWindowService(database *db.DB) (*WindowService, error) {
 // 记录不存在时返回 false,不视为错误。app 层在创建窗口之前调用,
 // 以便用初始状态构造窗口。
 func (s *WindowService) LoadPersistedAlwaysOnTop() (bool, error) {
-	var row WindowSetting
-	err := s.db.DB.Where("key = ?", windowSettingKeyAlwaysOnTop).First(&row).Error
+	enabled, err := s.loadBoolSetting(windowSettingKeyAlwaysOnTop)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			s.setCached(false)
-			return false, nil
-		}
-		return false, fmt.Errorf("window: load always_on_top: %w", err)
+		return false, err
 	}
-	enabled := row.Value == "1" || row.Value == "true"
 	s.setCached(enabled)
 	return enabled, nil
+}
+
+// LoadPersistedTrayMode 从数据库读取上次保存的"启动即托盘"偏好。
+// 记录不存在时返回 false。app 层在配置 Wails Options 前调用。
+func (s *WindowService) LoadPersistedTrayMode() (bool, error) {
+	return s.loadBoolSetting(windowSettingKeyTrayMode)
+}
+
+// SavePersistedTrayMode 持久化托盘模式偏好,由 TrayService 在
+// EnableTray/DisableTray 成功后回调。
+func (s *WindowService) SavePersistedTrayMode(enabled bool) error {
+	return s.saveBoolSetting(windowSettingKeyTrayMode, enabled)
+}
+
+// loadBoolSetting 通用 bool 型 setting 读取。
+func (s *WindowService) loadBoolSetting(key string) (bool, error) {
+	var row WindowSetting
+	err := s.db.DB.Where("key = ?", key).First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("window: load %s: %w", key, err)
+	}
+	return row.Value == "1" || row.Value == "true", nil
+}
+
+// saveBoolSetting 通用 bool 型 setting upsert。
+func (s *WindowService) saveBoolSetting(key string, enabled bool) error {
+	value := "0"
+	if enabled {
+		value = "1"
+	}
+	row := WindowSetting{Key: key, Value: value}
+	if err := s.db.DB.Save(&row).Error; err != nil {
+		return fmt.Errorf("window: save %s: %w", key, err)
+	}
+	return nil
 }
 
 // SetSetter 注入窗口置顶设置器。app 层在创建窗口后调用。
@@ -95,16 +127,7 @@ func (s *WindowService) ToggleAlwaysOnTop() (*AlwaysOnTopState, error) {
 
 // persistAlwaysOnTop upsert 一条 WindowSetting 记录。
 func (s *WindowService) persistAlwaysOnTop(enabled bool) error {
-	value := "0"
-	if enabled {
-		value = "1"
-	}
-	row := WindowSetting{Key: windowSettingKeyAlwaysOnTop, Value: value}
-	// key 为主键,Save 会做 upsert。
-	if err := s.db.DB.Save(&row).Error; err != nil {
-		return fmt.Errorf("window: save always_on_top: %w", err)
-	}
-	return nil
+	return s.saveBoolSetting(windowSettingKeyAlwaysOnTop, enabled)
 }
 
 // applyAlwaysOnTop 通过注入的 setter 应用到窗口。setter 未注入时静默。
