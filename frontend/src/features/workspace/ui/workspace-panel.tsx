@@ -401,6 +401,11 @@ function TreeArea() {
         // 与主流文件管理器(资源管理器 / Finder / IDEA)保持一致:
         // 同应用内拖拽即移动,按 Ctrl 复制。
         const cut = !(e.ctrlKey || e.metaKey)
+        // 同级拖动短路:move 语义下,若所有源路径已是目标目录的直接子项,
+        // 视为无意义拖动(拖到兄弟节点上会解析到同一父目录),直接忽略。
+        // 避免后端把"移动到同目录"当作重命名/覆盖处理,导致误改文件名。
+        // 复制语义(按 Ctrl/Cmd)仍放行,允许在同目录生成副本。
+        if (cut && isSameParentMove(paths, target)) return
         await pasteFromPaths(paths, target, cut)
         return
       }
@@ -673,6 +678,36 @@ function TreeArea() {
 function basenameOf(p: string): string {
   const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
   return idx >= 0 ? p.slice(idx + 1) : p
+}
+
+/**
+ * dirnameOf 返回路径的父目录部分,兼容 Windows/POSIX 分隔符。
+ * 无分隔符时返回空串(调用方据此判断即可,不再向上追溯根)。
+ */
+function dirnameOf(p: string): string {
+  const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
+  return idx >= 0 ? p.slice(0, idx) : ""
+}
+
+/**
+ * isSameParentMove 判断"应用内 move 拖拽"是否本质上是同级挪动:
+ * 目标目录与所有源路径的父目录一致时视为同级,应当忽略,
+ * 避免把"移动到自身父目录"降级为对该项的重命名/覆盖。
+ */
+function isSameParentMove(
+  paths: string[],
+  target: { path: string; isDir: boolean } | string,
+): boolean {
+  const targetDir =
+    typeof target === "string"
+      ? target
+      : target.isDir
+        ? target.path
+        : dirnameOf(target.path)
+  if (!targetDir) return false
+  const norm = (s: string) => s.replace(/[\\/]+$/, "")
+  const t = norm(targetDir)
+  return paths.every((p) => norm(dirnameOf(p)) === t)
 }
 
 function safeReadData(dt: DataTransfer, type: string): string {
