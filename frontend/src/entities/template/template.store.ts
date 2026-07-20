@@ -1,7 +1,7 @@
 import { create } from "zustand"
 
-import { PromptTemplateService } from "@/../bindings/prompttool/internal/services"
-import type { PromptTemplate } from "@/../bindings/prompttool/internal/services/models"
+import { PromptTemplateService } from "@/../bindings/prompttool/internal/services/prompt"
+import type { PromptTemplate } from "@/../bindings/prompttool/internal/services/prompt/models"
 
 /**
  * 模板列表 store。

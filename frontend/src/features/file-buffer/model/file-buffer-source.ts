@@ -1,6 +1,6 @@
 import { Events } from "@wailsio/runtime"
 
-import { FileService } from "@/../bindings/prompttool/internal/services"
+import { FileService } from "@/../bindings/prompttool/internal/services/file"
 import { useTabStore } from "@/features/tabs"
 
 import type { WorkspaceChangedEvent } from "@/entities/workspace"

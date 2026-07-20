@@ -6,10 +6,8 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import {
-  DialogService,
-  WorkspaceService,
-} from "@/../bindings/prompttool/internal/services"
+import { DialogService } from "@/../bindings/prompttool/internal/services/dialog"
+import { WorkspaceService } from "@/../bindings/prompttool/internal/services/workspace"
 import {
   AlertDialog,
   AlertDialogAction,

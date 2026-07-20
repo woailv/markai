@@ -1,7 +1,7 @@
 import { MessageSquare, Pencil, Pin, PinOff, Plus, Search, Trash2 } from "lucide-react"
 import { useMemo, useState, type ReactElement } from "react"
 
-import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
+import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/conversation/models"
 import {
   AlertDialog,
   AlertDialogAction,

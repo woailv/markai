@@ -261,7 +261,7 @@ function TabContextMenu({
     if (tab.kind !== "file") return
     try {
       const { FileService } = await import(
-        "@/../bindings/prompttool/internal/services"
+        "@/../bindings/prompttool/internal/services/file"
       )
       await FileService.OpenInExplorer(tab.path)
     } catch (err) {

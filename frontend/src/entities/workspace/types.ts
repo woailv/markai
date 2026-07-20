@@ -1,4 +1,4 @@
-import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/models"
+import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/workspace/models"
 
 /**
  * WorkspaceChangedEvent 后端 fsnotify 推送的载荷。

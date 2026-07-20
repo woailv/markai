@@ -1,7 +1,5 @@
-import {
-  ClipboardService,
-  FileService,
-} from "@/../bindings/prompttool/internal/services"
+import { ClipboardService } from "@/../bindings/prompttool/internal/services/clipboard"
+import { FileService } from "@/../bindings/prompttool/internal/services/file"
 import { useWorkspaceStore } from "./workspace.store"
 
 import { toast } from "../ui/toast"

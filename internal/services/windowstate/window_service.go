@@ -1,0 +1,273 @@
+package windowstate
+
+import (
+	"errors"
+	"fmt"
+	"sync"
+
+	"gorm.io/gorm"
+
+	"prompttool/internal/db"
+	"prompttool/internal/pkg/eventbus"
+)
+
+// AlwaysOnTopSetter 将"置顶"能力抽象为一个函数,便于解耦具体窗口实现(Wails)。
+// app 层在创建窗口后注入,通常是 window.SetAlwaysOnTop 的闭包。
+type AlwaysOnTopSetter func(enabled bool)
+
+// WindowVisibilitySetter 将"显示/隐藏窗口"能力抽象为一个函数。
+// app 层在创建窗口后注入,通常是 window.Show/window.Hide 的闭包封装。
+type WindowVisibilitySetter func(visible bool)
+
+// WindowBottomRightMover 将"将窗口移动到屏幕右下角"能力抽象为一个函数。
+// 语义:窗口右边缘贴屏幕工作区右边缘(距离 0),窗口下边缘贴工作区底边缘
+// (即状态栏/任务栏上沿,距离 0)。app 层在创建窗口后注入,内部通过 Wails
+// runtime 获取屏幕工作区尺寸与当前窗口尺寸并调用 SetPosition。
+type WindowBottomRightMover func() error
+
+// WindowService 管理主窗口的用户可持久化设置。
+// 目前实现:置顶状态 (Always On Top)、显示/隐藏(供托盘模式调用)。
+type WindowService struct {
+	db             *db.DB
+	mu             sync.RWMutex
+	setter         AlwaysOnTopSetter
+	visibilitySet  WindowVisibilitySetter
+	bottomRightMov WindowBottomRightMover
+	emitter        eventbus.Emitter
+	// cached 反映当前应用中的置顶状态,避免频繁查库。
+	cached bool
+	// visible 反映当前窗口的可见性状态(内存缓存)。
+	visible bool
+}
+
+// NewWindowService 构造 WindowService。调用方需负责执行 AutoMigrate(&WindowSetting{})。
+func NewWindowService(database *db.DB) (*WindowService, error) {
+	if database == nil || database.DB == nil {
+		return nil, errors.New("window: database is required")
+	}
+	return &WindowService{db: database}, nil
+}
+
+// LoadPersistedAlwaysOnTop 从数据库读取上次保存的置顶状态。
+// 记录不存在时返回 false,不视为错误。app 层在创建窗口之前调用,
+// 以便用初始状态构造窗口。
+func (s *WindowService) LoadPersistedAlwaysOnTop() (bool, error) {
+	enabled, err := s.loadBoolSetting(windowSettingKeyAlwaysOnTop)
+	if err != nil {
+		return false, err
+	}
+	s.setCached(enabled)
+	return enabled, nil
+}
+
+// LoadPersistedTrayMode 从数据库读取上次保存的"启动即托盘"偏好。
+// 记录不存在时返回 false。app 层在配置 Wails Options 前调用。
+func (s *WindowService) LoadPersistedTrayMode() (bool, error) {
+	return s.loadBoolSetting(windowSettingKeyTrayMode)
+}
+
+// SavePersistedTrayMode 持久化托盘模式偏好,由 TrayService 在
+// EnableTray/DisableTray 成功后回调。
+func (s *WindowService) SavePersistedTrayMode(enabled bool) error {
+	return s.saveBoolSetting(windowSettingKeyTrayMode, enabled)
+}
+
+// loadBoolSetting 通用 bool 型 setting 读取。
+func (s *WindowService) loadBoolSetting(key string) (bool, error) {
+	var row WindowSetting
+	err := s.db.DB.Where("key = ?", key).First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("window: load %s: %w", key, err)
+	}
+	return row.Value == "1" || row.Value == "true", nil
+}
+
+// saveBoolSetting 通用 bool 型 setting upsert。
+func (s *WindowService) saveBoolSetting(key string, enabled bool) error {
+	value := "0"
+	if enabled {
+		value = "1"
+	}
+	row := WindowSetting{Key: key, Value: value}
+	if err := s.db.DB.Save(&row).Error; err != nil {
+		return fmt.Errorf("window: save %s: %w", key, err)
+	}
+	return nil
+}
+
+// SetSetter 注入窗口置顶设置器。app 层在创建窗口后调用。
+func (s *WindowService) SetSetter(setter AlwaysOnTopSetter) {
+	s.mu.Lock()
+	s.setter = setter
+	s.mu.Unlock()
+}
+
+// SetVisibilitySetter 注入窗口显示/隐藏设置器。app 层在创建窗口后调用。
+// setter 语义:传入 true 表示显示窗口(必要时置前),false 表示隐藏窗口。
+func (s *WindowService) SetVisibilitySetter(setter WindowVisibilitySetter) {
+	s.mu.Lock()
+	s.visibilitySet = setter
+	s.mu.Unlock()
+}
+
+// SetBottomRightMover 注入"移动窗口到屏幕右下角"能力。app 层在创建窗口后调用。
+func (s *WindowService) SetBottomRightMover(mover WindowBottomRightMover) {
+	s.mu.Lock()
+	s.bottomRightMov = mover
+	s.mu.Unlock()
+}
+
+// SetInitialVisibility 由 app 层在创建窗口后调用,同步内存中的初始可见性。
+// 托盘模式启动时应传 false。
+func (s *WindowService) SetInitialVisibility(visible bool) {
+	s.mu.Lock()
+	s.visible = visible
+	s.mu.Unlock()
+}
+
+// SetEmitter 注入事件推送能力。
+func (s *WindowService) SetEmitter(e eventbus.Emitter) {
+	s.mu.Lock()
+	s.emitter = e
+	s.mu.Unlock()
+}
+
+// GetAlwaysOnTop 返回当前置顶状态(内存缓存,与数据库保持同步)。
+func (s *WindowService) GetAlwaysOnTop() (*AlwaysOnTopState, error) {
+	s.mu.RLock()
+	enabled := s.cached
+	s.mu.RUnlock()
+	return &AlwaysOnTopState{Enabled: enabled}, nil
+}
+
+// SetAlwaysOnTop 设置置顶状态,持久化并应用到窗口。
+// 成功后广播 WindowEventAlwaysOnTopChanged。
+func (s *WindowService) SetAlwaysOnTop(in SetAlwaysOnTopInput) (*AlwaysOnTopState, error) {
+	if err := s.persistAlwaysOnTop(in.Enabled); err != nil {
+		return nil, err
+	}
+	s.applyAlwaysOnTop(in.Enabled)
+	s.setCached(in.Enabled)
+	s.emitAlwaysOnTopChanged(in.Enabled)
+	return &AlwaysOnTopState{Enabled: in.Enabled}, nil
+}
+
+// ToggleAlwaysOnTop 翻转当前置顶状态。
+func (s *WindowService) ToggleAlwaysOnTop() (*AlwaysOnTopState, error) {
+	s.mu.RLock()
+	next := !s.cached
+	s.mu.RUnlock()
+	return s.SetAlwaysOnTop(SetAlwaysOnTopInput{Enabled: next})
+}
+
+// persistAlwaysOnTop upsert 一条 WindowSetting 记录。
+func (s *WindowService) persistAlwaysOnTop(enabled bool) error {
+	return s.saveBoolSetting(windowSettingKeyAlwaysOnTop, enabled)
+}
+
+// applyAlwaysOnTop 通过注入的 setter 应用到窗口。setter 未注入时静默。
+func (s *WindowService) applyAlwaysOnTop(enabled bool) {
+	s.mu.RLock()
+	setter := s.setter
+	s.mu.RUnlock()
+	if setter == nil {
+		return
+	}
+	setter(enabled)
+}
+
+// emitAlwaysOnTopChanged 广播变更事件。emitter 未注入时静默。
+func (s *WindowService) emitAlwaysOnTopChanged(enabled bool) {
+	s.mu.RLock()
+	e := s.emitter
+	s.mu.RUnlock()
+	if e == nil {
+		return
+	}
+	e.EmitEvent(WindowEventAlwaysOnTopChanged, AlwaysOnTopState{Enabled: enabled})
+}
+
+// setCached 线程安全地更新内存缓存。
+func (s *WindowService) setCached(enabled bool) {
+	s.mu.Lock()
+	s.cached = enabled
+	s.mu.Unlock()
+}
+
+// GetVisibility 返回当前窗口可见性状态。
+func (s *WindowService) GetVisibility() (*WindowVisibilityState, error) {
+	s.mu.RLock()
+	v := s.visible
+	s.mu.RUnlock()
+	return &WindowVisibilityState{Visible: v}, nil
+}
+
+// Hide 隐藏主窗口。托盘模式下由托盘菜单/关闭拦截等场景调用。
+// 若 setter 未注入则返回错误;若窗口已处于隐藏状态则为幂等操作。
+func (s *WindowService) Hide() (*WindowVisibilityState, error) {
+	return s.applyVisibility(false)
+}
+
+// Show 显示主窗口。托盘模式下由托盘图标点击/菜单唤出等场景调用。
+// 若 setter 未注入则返回错误;若窗口已处于显示状态则为幂等操作。
+func (s *WindowService) Show() (*WindowVisibilityState, error) {
+	return s.applyVisibility(true)
+}
+
+// ToggleVisibility 翻转当前显示/隐藏状态,便于托盘图标单击等场景使用。
+func (s *WindowService) ToggleVisibility() (*WindowVisibilityState, error) {
+	s.mu.RLock()
+	next := !s.visible
+	s.mu.RUnlock()
+	return s.applyVisibility(next)
+}
+
+// applyVisibility 统一处理显示/隐藏,含 setter 校验、缓存更新与事件广播。
+func (s *WindowService) applyVisibility(visible bool) (*WindowVisibilityState, error) {
+	s.mu.Lock()
+	setter := s.visibilitySet
+	if setter == nil {
+		s.mu.Unlock()
+		return nil, errors.New("window: visibility setter not injected")
+	}
+	if s.visible == visible {
+		s.mu.Unlock()
+		return &WindowVisibilityState{Visible: visible}, nil
+	}
+	s.visible = visible
+	s.mu.Unlock()
+
+	setter(visible)
+	s.emitVisibilityChanged(visible)
+	return &WindowVisibilityState{Visible: visible}, nil
+}
+
+// emitVisibilityChanged 广播可见性变更事件。emitter 未注入时静默。
+func (s *WindowService) emitVisibilityChanged(visible bool) {
+	s.mu.RLock()
+	e := s.emitter
+	s.mu.RUnlock()
+	if e == nil {
+		return
+	}
+	e.EmitEvent(WindowEventVisibilityChanged, WindowVisibilityState{Visible: visible})
+}
+
+// MoveToBottomRight 将主窗口移动到屏幕工作区的右下角,
+// 使窗口右边缘与屏幕右边缘距离为 0、下边缘与状态栏/任务栏上沿距离为 0。
+// 若 mover 未注入则返回错误。
+func (s *WindowService) MoveToBottomRight() error {
+	s.mu.RLock()
+	mover := s.bottomRightMov
+	s.mu.RUnlock()
+	if mover == nil {
+		return errors.New("window: bottom-right mover not injected")
+	}
+	if err := mover(); err != nil {
+		return fmt.Errorf("window: move to bottom-right: %w", err)
+	}
+	return nil
+}

@@ -12,7 +12,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo } from "react"
 
-import { FileService } from "@/../bindings/prompttool/internal/services"
+import { FileService } from "@/../bindings/prompttool/internal/services/file"
 import {
   ContextMenu,
   ContextMenuContent,

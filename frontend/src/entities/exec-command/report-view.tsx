@@ -9,8 +9,8 @@ import {
 } from "lucide-react"
 import { useEffect, useState } from "react"
 
-import { SnapshotService } from "@/../bindings/prompttool/internal/services"
-import type { BatchStatus } from "@/../bindings/prompttool/internal/services/models"
+import { SnapshotService } from "@/../bindings/prompttool/internal/services/snapshot"
+import type { BatchStatus } from "@/../bindings/prompttool/internal/services/snapshot/models"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { confirmDestructive } from "@/shared/ui"

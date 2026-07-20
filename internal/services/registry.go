@@ -7,6 +7,17 @@ import (
 
 	"prompttool/internal/config"
 	"prompttool/internal/db"
+	"prompttool/internal/services/clipboard"
+	"prompttool/internal/services/conversation"
+	"prompttool/internal/services/dialog"
+	"prompttool/internal/services/file"
+	"prompttool/internal/services/greet"
+	"prompttool/internal/services/prompt"
+	"prompttool/internal/services/recent"
+	"prompttool/internal/services/snapshot"
+	"prompttool/internal/services/tray"
+	"prompttool/internal/services/windowstate"
+	"prompttool/internal/services/workspace"
 )
 
 // RegistryResult 打包 Registry 的产物。除了 Wails 使用的 Service 切片,
@@ -14,53 +25,52 @@ import (
 // (WorkspaceService, DialogService, RecentService, WindowService, TrayService)。
 type RegistryResult struct {
 	Services  []application.Service
-	Workspace *WorkspaceService
-	Dialog    *DialogService
-	Recent    *RecentService
-	Window    *WindowService
-	Tray      *TrayService
+	Workspace *workspace.WorkspaceService
+	Dialog    *dialog.DialogService
+	Recent    *recent.RecentService
+	Window    *windowstate.WindowService
+	Tray      *tray.TrayService
 }
 
 // Registry 汇总所有暴露给前端的 Service。
 // 新增 Service 时只需在此处 append,main/app 层无需改动。
 // database 参数供需要持久化的 Service 注入使用。
 func Registry(database *db.DB) (*RegistryResult, error) {
-	promptSvc, err := NewPromptTemplateService(database)
+	promptSvc, err := prompt.NewPromptTemplateService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init prompt template: %w", err)
 	}
-	convSvc, err := NewConversationService(database)
+	convSvc, err := conversation.NewConversationService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init conversation: %w", err)
 	}
-	snapshotSvc, err := NewSnapshotService(database)
+	snapshotSvc, err := snapshot.NewSnapshotService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init snapshot: %w", err)
 	}
-	recentSvc, err := NewRecentService(database)
+	recentSvc, err := recent.NewRecentService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init recent: %w", err)
 	}
-	windowSvc, err := NewWindowService(database)
+	windowSvc, err := windowstate.NewWindowService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init window: %w", err)
 	}
-	workspaceSvc := NewWorkspaceService(config.DefaultWorkspace())
-	workspaceSvc.setRecent(recentSvc)
-	dialogSvc := NewDialogService()
-	traySvc := NewTrayService()
+	workspaceSvc := workspace.NewWorkspaceService(config.DefaultWorkspace(), recentSvc)
+	dialogSvc := dialog.NewDialogService()
+	traySvc := tray.NewTrayService()
 	return &RegistryResult{
 		Services: []application.Service{
-			application.NewService(NewGreetService()),
+			application.NewService(greet.NewGreetService()),
 			application.NewService(promptSvc),
-			application.NewService(NewFileService(snapshotSvc)),
+			application.NewService(file.NewFileService(snapshotSvc)),
 			application.NewService(convSvc),
 			application.NewService(snapshotSvc),
 			application.NewService(workspaceSvc),
 			application.NewService(dialogSvc),
 			application.NewService(recentSvc),
 			application.NewService(windowSvc),
-			application.NewService(NewClipboardService()),
+			application.NewService(clipboard.NewClipboardService()),
 			application.NewService(traySvc),
 		},
 		Workspace: workspaceSvc,

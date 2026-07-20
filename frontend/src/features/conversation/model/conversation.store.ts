@@ -1,8 +1,8 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-import { ConversationService } from "@/../bindings/prompttool/internal/services"
-import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
+import { ConversationService } from "@/../bindings/prompttool/internal/services/conversation"
+import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/conversation/models"
 
 /**
  * ConversationStore 承担两个职责:

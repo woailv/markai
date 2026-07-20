@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 
-import {
-  ConversationService,
-  SnapshotService,
-} from "@/../bindings/prompttool/internal/services"
+import { ConversationService } from "@/../bindings/prompttool/internal/services/conversation"
+import { SnapshotService } from "@/../bindings/prompttool/internal/services/snapshot"
 
 import { encodeTemplateToken } from "@/shared/rich-editor"
 import { useTemplateStore } from "@/entities/template"

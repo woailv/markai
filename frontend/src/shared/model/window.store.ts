@@ -1,7 +1,7 @@
 import { Events } from "@wailsio/runtime"
 import { create } from "zustand"
 
-import { WindowService } from "@/../bindings/prompttool/internal/services"
+import { WindowService } from "@/../bindings/prompttool/internal/services/windowstate"
 
 /**
  * WindowStore 管理主窗口的用户设置状态(目前:置顶)。

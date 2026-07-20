@@ -1,7 +1,5 @@
-import {
-  FileService,
-} from "@/../bindings/prompttool/internal/services"
-import type { FileEntry } from "@/../bindings/prompttool/internal/services/models"
+import { FileService } from "@/../bindings/prompttool/internal/services/file"
+import type { FileEntry } from "@/../bindings/prompttool/internal/services/file/models"
 
 import { FILE_TOKEN_REGEX } from "@/shared/rich-editor"
 import { parseCommands } from "@/entities/exec-command"

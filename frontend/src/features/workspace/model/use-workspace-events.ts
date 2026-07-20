@@ -1,8 +1,8 @@
 import { Events } from "@wailsio/runtime"
 import { useEffect, useRef } from "react"
 
-import { WorkspaceService } from "@/../bindings/prompttool/internal/services"
-import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/models"
+import { WorkspaceService } from "@/../bindings/prompttool/internal/services/workspace"
+import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/workspace/models"
 import { sortEntries, useWorkspaceStore } from "./workspace.store"
 
 import type { WorkspaceChangedEvent } from "@/entities/workspace"

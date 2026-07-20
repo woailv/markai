@@ -1,6 +1,6 @@
 import { Maximize2, MessagesSquare, Minimize2, Plus } from "lucide-react"
 
-import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/models"
+import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/conversation/models"
 import { cn } from "@/lib/utils"
 
 import { HistoryPopover } from "./history-popover"

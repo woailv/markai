@@ -1,11 +1,9 @@
 import { Clock, FolderOpen, Trash2, X } from "lucide-react"
 import { useEffect } from "react"
 
-import {
-  DialogService,
-  WorkspaceService,
-} from "@/../bindings/prompttool/internal/services"
-import type { RecentItem } from "@/../bindings/prompttool/internal/services/models"
+import { DialogService } from "@/../bindings/prompttool/internal/services/dialog"
+import { WorkspaceService } from "@/../bindings/prompttool/internal/services/workspace"
+import type { RecentItem } from "@/../bindings/prompttool/internal/services/recent/models"
 import { cn } from "@/lib/utils"
 import { useWorkspaceStore, refreshRoot } from "@/features/workspace"
 

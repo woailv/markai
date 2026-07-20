@@ -1,8 +1,8 @@
 import { Events } from "@wailsio/runtime"
 import { create } from "zustand"
 
-import { RecentService } from "@/../bindings/prompttool/internal/services"
-import type { RecentItem } from "@/../bindings/prompttool/internal/services/models"
+import { RecentService } from "@/../bindings/prompttool/internal/services/recent"
+import type { RecentItem } from "@/../bindings/prompttool/internal/services/recent/models"
 
 /**
  * useRecentStore 管理"最近打开"列表状态。

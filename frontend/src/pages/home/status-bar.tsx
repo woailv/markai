@@ -1,7 +1,7 @@
 import { Pin, PanelLeft, PanelRight, MoveDownRight } from "lucide-react"
 import { useEffect } from "react"
 
-import { MoveToBottomRight } from "@/../bindings/prompttool/internal/services/windowservice"
+import { MoveToBottomRight } from "@/../bindings/prompttool/internal/services/windowstate/windowservice"
 import { cn } from "@/lib/utils"
 import { useRightPanelStore } from "@/features/conversation"
 import { useTabStore } from "@/features/tabs"

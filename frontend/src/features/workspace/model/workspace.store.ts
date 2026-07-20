@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/models"
+import type { WorkspaceEntry } from "@/../bindings/prompttool/internal/services/workspace/models"
 import { WORKSPACE_LAYOUT } from "@/shared/config"
 
 /**

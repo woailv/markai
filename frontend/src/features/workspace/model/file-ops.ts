@@ -1,4 +1,4 @@
-import { FileService } from "@/../bindings/prompttool/internal/services"
+import { FileService } from "@/../bindings/prompttool/internal/services/file"
 
 import { useWorkspaceStore } from "./workspace.store"
 

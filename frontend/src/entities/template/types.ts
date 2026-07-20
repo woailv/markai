@@ -1,1 +1,1 @@
-export type { PromptTemplate as Template } from "@/../bindings/prompttool/internal/services/models"
+export type { PromptTemplate as Template } from "@/../bindings/prompttool/internal/services/prompt/models"

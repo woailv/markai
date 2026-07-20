@@ -9,6 +9,9 @@ import (
 	"prompttool/internal/config"
 	"prompttool/internal/db"
 	"prompttool/internal/services"
+	"prompttool/internal/services/recent"
+	"prompttool/internal/services/windowstate"
+	"prompttool/internal/services/workspace"
 	"prompttool/internal/window"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -19,11 +22,11 @@ type App struct {
 	wails     *application.App
 	logger    *slog.Logger
 	db        *db.DB
-	workspace *services.WorkspaceService
+	workspace *workspace.WorkspaceService
 	cancel    context.CancelFunc
 }
 
-// wailsEmitter 将 Wails application 适配为 services.Emitter,
+// wailsEmitter 将 Wails application 适配为 eventbus.Emitter,
 // 供 WorkspaceService 向前端推送文件变更事件。
 type wailsEmitter struct {
 	app *application.App
@@ -50,8 +53,8 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		&db.Message{},
 		&db.SnapshotBatch{},
 		&db.FileSnapshot{},
-		&services.RecentItem{},
-		&services.WindowSetting{},
+		&recent.RecentItem{},
+		&windowstate.WindowSetting{},
 	); err != nil {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close db after migrate failure", "err", closeErr)
