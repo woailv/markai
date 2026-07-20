@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"prompttool/internal/services/conversation"
 
 	"prompttool/internal/config"
 	"prompttool/internal/db"
@@ -47,7 +48,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 	}
 
 	if err := database.AutoMigrate(
-		&db.Conversation{},
+		&conversation.Conversation{},
 		&db.Message{},
 		&db.SnapshotBatch{},
 		&db.FileSnapshot{},

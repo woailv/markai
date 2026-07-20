@@ -1,5 +1,23 @@
 package conversation
 
+import "time"
+
+// Conversation 会话主体。
+// 标题默认由首条用户消息摘要生成,可被用户覆盖(TitleOverridden=true)。
+// Pinned=true 表示置顶,列表中排在最前。
+type Conversation struct {
+	ID              uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	Title           string    `gorm:"size:256;not null;default:''" json:"title"`
+	TitleOverridden bool      `gorm:"not null;default:false" json:"titleOverridden"`
+	Pinned          bool      `gorm:"not null;default:false;index" json:"pinned"`
+	MessageCount    int       `gorm:"not null;default:0" json:"messageCount"`
+	CreatedAt       time.Time `gorm:"not null;index" json:"createdAt"`
+	UpdatedAt       time.Time `gorm:"not null;index" json:"updatedAt"`
+}
+
+// TableName 显式表名,避免复数化差异。
+func (Conversation) TableName() string { return "conversations" }
+
 // ConversationSummary 会话列表项。
 type ConversationSummary struct {
 	ID              uint64 `json:"id"`

@@ -39,7 +39,7 @@ func NewConversationService(database *db.DB) (*ConversationService, error) {
 
 // List 返回会话摘要列表,置顶项排最前,其后按 updatedAt 倒序。
 func (s *ConversationService) List() ([]ConversationSummary, error) {
-	var rows []db.Conversation
+	var rows []Conversation
 	if err := s.db.
 		Order("pinned DESC, updated_at DESC, id DESC").
 		Find(&rows).Error; err != nil {
@@ -85,7 +85,7 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 	if id == 0 {
 		return nil, errors.New("conversation: id required")
 	}
-	var conv db.Conversation
+	var conv Conversation
 	if err := s.db.First(&conv, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("conversation: not found: %d", id)
@@ -129,7 +129,7 @@ func (s *ConversationService) SetPinned(in SetPinnedInput) error {
 	if in.ConversationID == 0 {
 		return errors.New("conversation: id required")
 	}
-	res := s.db.Model(&db.Conversation{}).
+	res := s.db.Model(&Conversation{}).
 		Where("id = ?", in.ConversationID).
 		Update("pinned", in.Pinned)
 	if res.Error != nil {
@@ -152,7 +152,7 @@ func (s *ConversationService) Rename(in RenameConversationInput) error {
 	}
 	title = truncateRunes(title, titleMaxRunes)
 
-	res := s.db.Model(&db.Conversation{}).
+	res := s.db.Model(&Conversation{}).
 		Where("id = ?", in.ConversationID).
 		Updates(map[string]any{
 			"title":            title,
@@ -202,7 +202,7 @@ func (s *ConversationService) Delete(id uint64) error {
 			Delete(&db.ConversationTemplate{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete template links: %w", err)
 		}
-		if err := tx.Delete(&db.Conversation{}, id).Error; err != nil {
+		if err := tx.Delete(&Conversation{}, id).Error; err != nil {
 			return fmt.Errorf("conversation: delete: %w", err)
 		}
 		return nil
@@ -236,7 +236,7 @@ func (s *ConversationService) ClearMessages(id uint64) error {
 		}
 
 		// 重置计数
-		if err := tx.Model(&db.Conversation{}).Where("id = ?", id).
+		if err := tx.Model(&Conversation{}).Where("id = ?", id).
 			Updates(map[string]any{
 				"message_count": 0,
 				"updated_at":    time.Now(),
@@ -290,7 +290,7 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 		}
 
 		// 更新会话 updatedAt
-		if err := tx.Model(&db.Conversation{}).Where("id = ?", in.ConversationID).
+		if err := tx.Model(&Conversation{}).Where("id = ?", in.ConversationID).
 			Update("updated_at", time.Now()).Error; err != nil {
 			return fmt.Errorf("conversation: bump updated_at: %w", err)
 		}
@@ -318,7 +318,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 		convID := in.ConversationID
 
 		if convID == 0 {
-			conv := db.Conversation{
+			conv := Conversation{
 				Title:     titleFromContent(role, in.Content),
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -330,7 +330,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			createdNew = true
 		} else {
 			// 确认会话存在,并在需要时用首条 user 消息填充自动标题
-			var conv db.Conversation
+			var conv Conversation
 			if err := tx.First(&conv, convID).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return fmt.Errorf("conversation: not found: %d", convID)
@@ -345,7 +345,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 					return fmt.Errorf("conversation: count user msgs: %w", err)
 				}
 				if userCount == 0 {
-					if err := tx.Model(&db.Conversation{}).
+					if err := tx.Model(&Conversation{}).
 						Where("id = ?", convID).
 						Update("title", titleFromContent(role, in.Content)).Error; err != nil {
 						return fmt.Errorf("conversation: auto title: %w", err)
@@ -366,7 +366,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			return fmt.Errorf("conversation: append message: %w", err)
 		}
 
-		if err := tx.Model(&db.Conversation{}).
+		if err := tx.Model(&Conversation{}).
 			Where("id = ?", convID).
 			Updates(map[string]any{
 				"message_count": gorm.Expr("message_count + 1"),
@@ -407,7 +407,7 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 			Updates(map[string]any{"content": in.Content, "updated_at": now}).Error; err != nil {
 			return fmt.Errorf("conversation: update message: %w", err)
 		}
-		if err := tx.Model(&db.Conversation{}).
+		if err := tx.Model(&Conversation{}).
 			Where("id = ?", msg.ConversationID).
 			Update("updated_at", now).Error; err != nil {
 			return fmt.Errorf("conversation: bump updated_at: %w", err)
@@ -448,7 +448,7 @@ func (s *ConversationService) DeleteMessage(id uint64) error {
 			return fmt.Errorf("conversation: delete message: %w", err)
 		}
 		now := time.Now()
-		if err := tx.Model(&db.Conversation{}).
+		if err := tx.Model(&Conversation{}).
 			Where("id = ?", msg.ConversationID).
 			Updates(map[string]any{
 				"message_count": gorm.Expr("MAX(message_count - 1, 0)"),
@@ -462,7 +462,7 @@ func (s *ConversationService) DeleteMessage(id uint64) error {
 
 // ---------- 辅助 ----------
 
-func toConversationSummary(c db.Conversation) ConversationSummary {
+func toConversationSummary(c Conversation) ConversationSummary {
 	title := c.Title
 	if strings.TrimSpace(title) == "" {
 		title = titleFallback
