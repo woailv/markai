@@ -3,6 +3,8 @@
 
 /**
  * ConversationService 提供会话与消息的持久化能力。
+ * snapshots 用于会话删除/清空时级联清理批次与快照,通过服务边界调用,
+ * 避免本包直接操作 snapshot_batches / file_snapshots 表。
  * @module
  */
 

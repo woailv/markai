@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as gorm$0 from "../../../../gorm.io/gorm/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -29,6 +33,24 @@ export function BeginBatch($in: $models.BeginBatchInput): $CancellablePromise<$m
  */
 export function Bind($in: $models.BindBatchInput): $CancellablePromise<void> {
     return $Call.ByID(3344443653, $in);
+}
+
+/**
+ * DeleteBatchTx 在给定事务中删除单个批次及其快照文件。
+ * 由 ConversationService.DeleteMessage 在删除关联消息时调用。
+ */
+export function DeleteBatchTx(tx: gorm$0.DB | null, batchID: number): $CancellablePromise<void> {
+    return $Call.ByID(3195742755, tx, batchID);
+}
+
+/**
+ * DeleteByConversationTx 在给定事务中删除某会话名下的所有批次与快照文件。
+ * 由 ConversationService 在删除/清空会话时调用,保持 snapshot 域自治:
+ * 表结构与领域规则(比如仅删数据不做撤销回滚)都由本包决定,
+ * conversation 不再直接触碰 snapshot_batches / file_snapshots 表。
+ */
+export function DeleteByConversationTx(tx: gorm$0.DB | null, convID: number): $CancellablePromise<void> {
+    return $Call.ByID(3884906563, tx, convID);
 }
 
 /**
