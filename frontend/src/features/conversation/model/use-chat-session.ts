@@ -183,20 +183,24 @@ export function useChatSession({
 
         if (res.createdNew) {
           setCurrentConvId(res.conversationId)
-          // 立即同步到全局 activeConversationId,右侧面板/持久化跟随
-          useConversationStore
-            .getState()
-            .setActiveConversationId(res.conversationId)
-          onConversationCreated?.(res.conversationId)
           if (selectedTemplateIds.size > 0) {
             await ConversationService.SetTemplates({
               conversationId: res.conversationId,
               templateIds: Array.from(selectedTemplateIds),
             })
           }
+          // 必须先 await 刷新会话列表,再把新 id 设为激活会话。
+          // 否则 HomePage 的"校正副作用"会因列表尚未包含新会话而把
+          // activeConversationId 立刻重置为 null,导致下次发送又新建一条会话。
+          await useConversationStore.getState().load()
+          useConversationStore
+            .getState()
+            .setActiveConversationId(res.conversationId)
+          onConversationCreated?.(res.conversationId)
+        } else {
+          // 已有会话:列表变化(标题/排序)异步刷新即可
+          void useConversationStore.getState().load()
         }
-        // 会话列表在 store 内刷新(排序/标题变化),同时透传给外部回调
-        void useConversationStore.getState().load()
         onConversationsChanged?.()
 
         setMessages((prev) =>
