@@ -1,38 +1,31 @@
 package snapshot
 
-// BeginBatchInput 开启快照批次入参。
-// MessageID 为触发该批次的 AI 消息 id;可为 0(先执行、后落库),之后再 Bind。
-type BeginBatchInput struct {
-	ConversationID uint64 `json:"conversationId"`
-	MessageID      uint64 `json:"messageId"`
+import "time"
+
+// SnapshotBatch 一次 AI 消息触发的文件修改批次。
+// UndoneAt 非零表示已被撤销,该批次进入终态。
+type SnapshotBatch struct {
+	ID             uint64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConversationID uint64     `gorm:"not null;index" json:"conversationId"`
+	MessageID      uint64     `gorm:"not null;index" json:"messageId"`
+	CreatedAt      time.Time  `gorm:"not null;index" json:"createdAt"`
+	UndoneAt       *time.Time `gorm:"index" json:"undoneAt,omitempty"`
 }
 
-// BeginBatchResult 开启批次结果。
-type BeginBatchResult struct {
-	BatchID uint64 `json:"batchId"`
+func (SnapshotBatch) TableName() string { return "snapshot_batches" }
+
+// FileSnapshot 单个文件在批次开始前的快照。
+// Existed=false 表示该文件在动作前不存在(撤销时需要删除)。
+// Order 用于保留批次内多次修改同一路径时的顺序,还原时按逆序应用。
+type FileSnapshot struct {
+	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	BatchID   uint64    `gorm:"not null;index:idx_snap_batch_order" json:"batchId"`
+	Path      string    `gorm:"size:1024;not null" json:"path"`
+	Existed   bool      `gorm:"not null" json:"existed"`
+	IsDir     bool      `gorm:"not null;default:false" json:"isDir"`
+	Content   []byte    `gorm:"type:blob" json:"-"`
+	Order     int       `gorm:"not null;index:idx_snap_batch_order" json:"order"`
+	CreatedAt time.Time `gorm:"not null" json:"createdAt"`
 }
 
-// BindBatchInput 将已开启的批次绑定到最终落库的 AI 消息 id。
-type BindBatchInput struct {
-	BatchID   uint64 `json:"batchId"`
-	MessageID uint64 `json:"messageId"`
-}
-
-// BatchStatus 批次状态,用于前端渲染撤销入口。
-type BatchStatus struct {
-	BatchID   uint64 `json:"batchId"`
-	MessageID uint64 `json:"messageId"`
-	FileCount int    `json:"fileCount"`
-	CreatedAt string `json:"createdAt"`
-	UndoneAt  string `json:"undoneAt,omitempty"` // 非空表示已撤销
-	// StaleWarning=true 表示批次内某些文件在此后又被其它批次修改过,
-	// 撤销时会覆盖那些较新的修改。
-	StaleWarning bool `json:"staleWarning"`
-}
-
-// UndoBatchResult 撤销结果概览。
-type UndoBatchResult struct {
-	BatchID       uint64   `json:"batchId"`
-	RestoredPaths []string `json:"restoredPaths"`
-	Warnings      []string `json:"warnings"`
-}
+func (FileSnapshot) TableName() string { return "file_snapshots" }

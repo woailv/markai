@@ -36,7 +36,7 @@ func (s *SnapshotService) BeginBatch(in BeginBatchInput) (*BeginBatchResult, err
 	if in.ConversationID == 0 {
 		return nil, errors.New("snapshot: conversation id required")
 	}
-	batch := db.SnapshotBatch{
+	batch := SnapshotBatch{
 		ConversationID: in.ConversationID,
 		MessageID:      in.MessageID,
 		CreatedAt:      time.Now(),
@@ -52,7 +52,7 @@ func (s *SnapshotService) Bind(in BindBatchInput) error {
 	if in.BatchID == 0 || in.MessageID == 0 {
 		return errors.New("snapshot: batch id and message id required")
 	}
-	res := s.db.Model(&db.SnapshotBatch{}).
+	res := s.db.Model(&SnapshotBatch{}).
 		Where("id = ?", in.BatchID).
 		Update("message_id", in.MessageID)
 	if res.Error != nil {
@@ -61,8 +61,10 @@ func (s *SnapshotService) Bind(in BindBatchInput) error {
 	if res.RowsAffected == 0 {
 		return fmt.Errorf("snapshot: batch not found: %d", in.BatchID)
 	}
-	// 同步给该批次涉及的 message.batch_id(便于前端从消息即知有可撤销批次)
-	if err := s.db.Model(&db.Message{}).
+	// 同步给该批次涉及的 message.batch_id(便于前端从消息即知有可撤销批次)。
+	// 用 Table("messages") 而非引用 conversation.Message,避免与 conversation 包
+	// 形成循环依赖(conversation 需要 SnapshotService 做级联删除)。
+	if err := s.db.Table("messages").
 		Where("id = ?", in.MessageID).
 		Update("batch_id", in.BatchID).Error; err != nil {
 		return fmt.Errorf("snapshot: mark message batch: %w", err)
@@ -75,7 +77,7 @@ func (s *SnapshotService) Status(batchID uint64) (*BatchStatus, error) {
 	if batchID == 0 {
 		return nil, errors.New("snapshot: batch id required")
 	}
-	var batch db.SnapshotBatch
+	var batch SnapshotBatch
 	if err := s.db.First(&batch, batchID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("snapshot: batch not found: %d", batchID)
@@ -83,7 +85,7 @@ func (s *SnapshotService) Status(batchID uint64) (*BatchStatus, error) {
 		return nil, fmt.Errorf("snapshot: load batch: %w", err)
 	}
 	var count int64
-	if err := s.db.Model(&db.FileSnapshot{}).
+	if err := s.db.Model(&FileSnapshot{}).
 		Where("batch_id = ?", batchID).
 		Count(&count).Error; err != nil {
 		return nil, fmt.Errorf("snapshot: count files: %w", err)
@@ -114,8 +116,8 @@ func (s *SnapshotService) Undo(batchID uint64) (*UndoBatchResult, error) {
 		return nil, errors.New("snapshot: batch id required")
 	}
 	var (
-		batch db.SnapshotBatch
-		snaps []db.FileSnapshot
+		batch SnapshotBatch
+		snaps []FileSnapshot
 	)
 	if err := s.db.First(&batch, batchID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -135,7 +137,7 @@ func (s *SnapshotService) Undo(batchID uint64) (*UndoBatchResult, error) {
 
 	// 同一路径在一个批次内可能被记录多次(先写再删等),按最早那次(Order 最小)还原,
 	// 因为它才代表"批次开启前"的真实状态。
-	firstByPath := make(map[string]db.FileSnapshot, len(snaps))
+	firstByPath := make(map[string]FileSnapshot, len(snaps))
 	orderedPaths := make([]string, 0, len(snaps))
 	for _, sn := range snaps {
 		if _, ok := firstByPath[sn.Path]; ok {
@@ -156,7 +158,7 @@ func (s *SnapshotService) Undo(batchID uint64) (*UndoBatchResult, error) {
 	}
 
 	now := time.Now()
-	if err := s.db.Model(&db.SnapshotBatch{}).
+	if err := s.db.Model(&SnapshotBatch{}).
 		Where("id = ?", batchID).
 		Update("undone_at", &now).Error; err != nil {
 		return nil, fmt.Errorf("snapshot: mark undone: %w", err)
@@ -174,7 +176,7 @@ func (s *SnapshotService) RecordIfNeeded(batchID uint64, absPath string) error {
 		return nil
 	}
 	// 校验批次存在且未撤销
-	var batch db.SnapshotBatch
+	var batch SnapshotBatch
 	if err := s.db.First(&batch, batchID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return fmt.Errorf("snapshot: batch not found: %d", batchID)
@@ -185,7 +187,7 @@ func (s *SnapshotService) RecordIfNeeded(batchID uint64, absPath string) error {
 		return fmt.Errorf("snapshot: batch %d already undone", batchID)
 	}
 
-	sn := db.FileSnapshot{
+	sn := FileSnapshot{
 		BatchID:   batchID,
 		Path:      absPath,
 		CreatedAt: time.Now(),
@@ -211,7 +213,7 @@ func (s *SnapshotService) RecordIfNeeded(batchID uint64, absPath string) error {
 
 	// order = 当前批次已有条数
 	var count int64
-	if err := s.db.Model(&db.FileSnapshot{}).
+	if err := s.db.Model(&FileSnapshot{}).
 		Where("batch_id = ?", batchID).
 		Count(&count).Error; err != nil {
 		return fmt.Errorf("snapshot: count existing: %w", err)
@@ -224,10 +226,55 @@ func (s *SnapshotService) RecordIfNeeded(batchID uint64, absPath string) error {
 	return nil
 }
 
+// ---------- 跨域清理:供 conversation 层调用 ----------
+
+// DeleteBatchTx 在给定事务中删除单个批次及其快照文件。
+// 由 ConversationService.DeleteMessage 在删除关联消息时调用。
+func (s *SnapshotService) DeleteBatchTx(tx *gorm.DB, batchID uint64) error {
+	if batchID == 0 {
+		return errors.New("snapshot: batch id required")
+	}
+	if err := tx.Where("batch_id = ?", batchID).Delete(&FileSnapshot{}).Error; err != nil {
+		return fmt.Errorf("snapshot: delete files: %w", err)
+	}
+	if err := tx.Delete(&SnapshotBatch{}, batchID).Error; err != nil {
+		return fmt.Errorf("snapshot: delete batch: %w", err)
+	}
+	return nil
+}
+
+// DeleteByConversationTx 在给定事务中删除某会话名下的所有批次与快照文件。
+// 由 ConversationService 在删除/清空会话时调用,保持 snapshot 域自治:
+// 表结构与领域规则(比如仅删数据不做撤销回滚)都由本包决定,
+// conversation 不再直接触碰 snapshot_batches / file_snapshots 表。
+func (s *SnapshotService) DeleteByConversationTx(tx *gorm.DB, convID uint64) error {
+	if convID == 0 {
+		return errors.New("snapshot: conversation id required")
+	}
+	var batches []SnapshotBatch
+	if err := tx.Where("conversation_id = ?", convID).Find(&batches).Error; err != nil {
+		return fmt.Errorf("snapshot: load batches: %w", err)
+	}
+	if len(batches) == 0 {
+		return nil
+	}
+	ids := make([]uint64, 0, len(batches))
+	for _, b := range batches {
+		ids = append(ids, b.ID)
+	}
+	if err := tx.Where("batch_id IN ?", ids).Delete(&FileSnapshot{}).Error; err != nil {
+		return fmt.Errorf("snapshot: delete files: %w", err)
+	}
+	if err := tx.Where("conversation_id = ?", convID).Delete(&SnapshotBatch{}).Error; err != nil {
+		return fmt.Errorf("snapshot: delete batches: %w", err)
+	}
+	return nil
+}
+
 // detectStale 判断此批次涉及的路径中,是否有在此之后被其它未撤销批次覆盖过。
-func (s *SnapshotService) detectStale(batch db.SnapshotBatch) (bool, error) {
+func (s *SnapshotService) detectStale(batch SnapshotBatch) (bool, error) {
 	var paths []string
-	if err := s.db.Model(&db.FileSnapshot{}).
+	if err := s.db.Model(&FileSnapshot{}).
 		Where("batch_id = ?", batch.ID).
 		Distinct("path").
 		Pluck("path", &paths).Error; err != nil {
@@ -237,7 +284,7 @@ func (s *SnapshotService) detectStale(batch db.SnapshotBatch) (bool, error) {
 		return false, nil
 	}
 	var newer int64
-	if err := s.db.Model(&db.FileSnapshot{}).
+	if err := s.db.Model(&FileSnapshot{}).
 		Joins("JOIN snapshot_batches ON snapshot_batches.id = file_snapshots.batch_id").
 		Where("file_snapshots.path IN ?", paths).
 		Where("snapshot_batches.id <> ?", batch.ID).
@@ -253,7 +300,7 @@ func (s *SnapshotService) detectStale(batch db.SnapshotBatch) (bool, error) {
 // - Existed=false → 若当前存在则删除
 // - Existed=true & IsDir → 确保目录存在
 // - Existed=true & 文件 → 覆写回原始内容
-func restoreOne(sn db.FileSnapshot) error {
+func restoreOne(sn FileSnapshot) error {
 	if !sn.Existed {
 		if _, err := os.Stat(sn.Path); err == nil {
 			if err := os.RemoveAll(sn.Path); err != nil {

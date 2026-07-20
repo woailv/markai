@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"prompttool/internal/services/conversation"
 
 	"prompttool/internal/config"
 	"prompttool/internal/db"
 	"prompttool/internal/services"
+	"prompttool/internal/services/conversation"
+	"prompttool/internal/services/prompt"
 	"prompttool/internal/services/recent"
+	"prompttool/internal/services/snapshot"
 	"prompttool/internal/services/windowstate"
 	"prompttool/internal/services/workspace"
 	"prompttool/internal/window"
@@ -47,11 +49,15 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: init db: %w", err)
 	}
 
+	// 集中登记所有需要迁移的实体。新增实体时,只需在此处追加,
+	// Service 构造函数不再自行调用 AutoMigrate。
 	if err := database.AutoMigrate(
+		&prompt.PromptTemplate{},
 		&conversation.Conversation{},
-		&db.Message{},
-		&db.SnapshotBatch{},
-		&db.FileSnapshot{},
+		&conversation.Message{},
+		&conversation.ConversationTemplate{},
+		&snapshot.SnapshotBatch{},
+		&snapshot.FileSnapshot{},
 		&recent.RecentItem{},
 		&windowstate.WindowSetting{},
 	); err != nil {

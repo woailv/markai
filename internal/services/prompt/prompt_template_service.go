@@ -15,13 +15,11 @@ type PromptTemplateService struct {
 	db *db.DB
 }
 
-// NewPromptTemplateService 构造函数,注入数据库依赖并执行迁移。
+// NewPromptTemplateService 构造函数,注入数据库依赖。
+// 表结构迁移由 app 层集中处理,本构造函数不再执行 AutoMigrate。
 func NewPromptTemplateService(database *db.DB) (*PromptTemplateService, error) {
 	if database == nil {
 		return nil, errors.New("prompt_template: nil db")
-	}
-	if err := database.AutoMigrate(&PromptTemplate{}); err != nil {
-		return nil, fmt.Errorf("prompt_template: migrate: %w", err)
 	}
 	return &PromptTemplateService{db: database}, nil
 }

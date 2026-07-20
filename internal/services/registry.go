@@ -40,13 +40,14 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("services: init prompt template: %w", err)
 	}
-	convSvc, err := conversation.NewConversationService(database)
-	if err != nil {
-		return nil, fmt.Errorf("services: init conversation: %w", err)
-	}
+	// snapshot 先构造:ConversationService 依赖它做会话级联清理。
 	snapshotSvc, err := snapshot.NewSnapshotService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init snapshot: %w", err)
+	}
+	convSvc, err := conversation.NewConversationService(database, snapshotSvc)
+	if err != nil {
+		return nil, fmt.Errorf("services: init conversation: %w", err)
 	}
 	recentSvc, err := recent.NewRecentService(database)
 	if err != nil {

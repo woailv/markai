@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"prompttool/internal/db"
+	"prompttool/internal/services/snapshot"
 )
 
 const (
@@ -20,19 +21,23 @@ const (
 )
 
 // ConversationService 提供会话与消息的持久化能力。
+// snapshots 用于会话删除/清空时级联清理批次与快照,通过服务边界调用,
+// 避免本包直接操作 snapshot_batches / file_snapshots 表。
 type ConversationService struct {
-	db *db.DB
+	db        *db.DB
+	snapshots *snapshot.SnapshotService
 }
 
-// NewConversationService 构造函数。调用方负责保证 database 非空。
-func NewConversationService(database *db.DB) (*ConversationService, error) {
+// NewConversationService 构造函数。调用方负责保证 database 与 snapshots 非空。
+// 表结构迁移由 app 层集中处理,本构造函数不再执行 AutoMigrate。
+func NewConversationService(database *db.DB, snapshots *snapshot.SnapshotService) (*ConversationService, error) {
 	if database == nil {
 		return nil, errors.New("conversation: nil db")
 	}
-	if err := database.AutoMigrate(&db.ConversationTemplate{}); err != nil {
-		return nil, fmt.Errorf("conversation: migrate templates: %w", err)
+	if snapshots == nil {
+		return nil, errors.New("conversation: nil snapshots service")
 	}
-	return &ConversationService{db: database}, nil
+	return &ConversationService{db: database, snapshots: snapshots}, nil
 }
 
 // ---------- 会话生命周期 ----------
@@ -54,7 +59,7 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	var links []db.ConversationTemplate
+	var links []ConversationTemplate
 	if err := s.db.
 		Where("conversation_id IN ?", ids).
 		Order("conversation_id ASC, id ASC").
@@ -92,7 +97,7 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		}
 		return nil, fmt.Errorf("conversation: get: %w", err)
 	}
-	var msgs []db.Message
+	var msgs []Message
 	if err := s.db.
 		Where("conversation_id = ?", id).
 		Order("created_at ASC, id ASC").
@@ -101,7 +106,7 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 	}
 
 	// 加载会话绑定的模板 ID
-	var links []db.ConversationTemplate
+	var links []ConversationTemplate
 	if err := s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&links).Error; err != nil {
 		return nil, fmt.Errorf("conversation: load templates: %w", err)
 	}
@@ -174,32 +179,16 @@ func (s *ConversationService) Delete(id uint64) error {
 		return errors.New("conversation: id required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		// 先找出该会话下的批次,连带删除快照
-		var batches []db.SnapshotBatch
-		if err := tx.Where("conversation_id = ?", id).Find(&batches).Error; err != nil {
-			return fmt.Errorf("conversation: load batches: %w", err)
-		}
-		if len(batches) > 0 {
-			ids := make([]uint64, 0, len(batches))
-			for _, b := range batches {
-				ids = append(ids, b.ID)
-			}
-			if err := tx.Where("batch_id IN ?", ids).
-				Delete(&db.FileSnapshot{}).Error; err != nil {
-				return fmt.Errorf("conversation: delete snapshots: %w", err)
-			}
-			if err := tx.Where("conversation_id = ?", id).
-				Delete(&db.SnapshotBatch{}).Error; err != nil {
-				return fmt.Errorf("conversation: delete batches: %w", err)
-			}
+		if err := s.snapshots.DeleteByConversationTx(tx, id); err != nil {
+			return fmt.Errorf("conversation: delete snapshots: %w", err)
 		}
 		if err := tx.Where("conversation_id = ?", id).
-			Delete(&db.Message{}).Error; err != nil {
+			Delete(&Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete messages: %w", err)
 		}
 		// 级联清理模板关联
 		if err := tx.Where("conversation_id = ?", id).
-			Delete(&db.ConversationTemplate{}).Error; err != nil {
+			Delete(&ConversationTemplate{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete template links: %w", err)
 		}
 		if err := tx.Delete(&Conversation{}, id).Error; err != nil {
@@ -215,23 +204,10 @@ func (s *ConversationService) ClearMessages(id uint64) error {
 		return errors.New("conversation: id required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		var batches []db.SnapshotBatch
-		if err := tx.Where("conversation_id = ?", id).Find(&batches).Error; err != nil {
-			return fmt.Errorf("conversation: load batches: %w", err)
+		if err := s.snapshots.DeleteByConversationTx(tx, id); err != nil {
+			return fmt.Errorf("conversation: clear snapshots: %w", err)
 		}
-		if len(batches) > 0 {
-			ids := make([]uint64, 0, len(batches))
-			for _, b := range batches {
-				ids = append(ids, b.ID)
-			}
-			if err := tx.Where("batch_id IN ?", ids).Delete(&db.FileSnapshot{}).Error; err != nil {
-				return fmt.Errorf("conversation: delete snapshots: %w", err)
-			}
-			if err := tx.Where("conversation_id = ?", id).Delete(&db.SnapshotBatch{}).Error; err != nil {
-				return fmt.Errorf("conversation: delete batches: %w", err)
-			}
-		}
-		if err := tx.Where("conversation_id = ?", id).Delete(&db.Message{}).Error; err != nil {
+		if err := tx.Where("conversation_id = ?", id).Delete(&Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: clear messages: %w", err)
 		}
 
@@ -269,16 +245,16 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 
 		// 先全量删除旧绑定
 		if err := tx.Where("conversation_id = ?", in.ConversationID).
-			Delete(&db.ConversationTemplate{}).Error; err != nil {
+			Delete(&ConversationTemplate{}).Error; err != nil {
 			return fmt.Errorf("conversation: clear template links: %w", err)
 		}
 
 		// 重建新绑定
 		if len(uniq) > 0 {
 			now := time.Now()
-			links := make([]db.ConversationTemplate, 0, len(uniq))
+			links := make([]ConversationTemplate, 0, len(uniq))
 			for _, tid := range uniq {
-				links = append(links, db.ConversationTemplate{
+				links = append(links, ConversationTemplate{
 					ConversationID: in.ConversationID,
 					TemplateID:     tid,
 					CreatedAt:      now,
@@ -339,7 +315,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			}
 			if !conv.TitleOverridden && role == roleUser {
 				var userCount int64
-				if err := tx.Model(&db.Message{}).
+				if err := tx.Model(&Message{}).
 					Where("conversation_id = ? AND role = ?", convID, roleUser).
 					Count(&userCount).Error; err != nil {
 					return fmt.Errorf("conversation: count user msgs: %w", err)
@@ -354,7 +330,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			}
 		}
 
-		msg := db.Message{
+		msg := Message{
 			ConversationID: convID,
 			Role:           role,
 			Content:        in.Content,
@@ -391,7 +367,7 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 	if in.MessageID == 0 {
 		return nil, errors.New("conversation: message id required")
 	}
-	var msg db.Message
+	var msg Message
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&msg, in.MessageID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -402,7 +378,7 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 		now := time.Now()
 		msg.Content = in.Content
 		msg.UpdatedAt = now
-		if err := tx.Model(&db.Message{}).
+		if err := tx.Model(&Message{}).
 			Where("id = ?", msg.ID).
 			Updates(map[string]any{"content": in.Content, "updated_at": now}).Error; err != nil {
 			return fmt.Errorf("conversation: update message: %w", err)
@@ -428,7 +404,7 @@ func (s *ConversationService) DeleteMessage(id uint64) error {
 		return errors.New("conversation: message id required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		var msg db.Message
+		var msg Message
 		if err := tx.First(&msg, id).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return fmt.Errorf("conversation: message not found: %d", id)
@@ -436,15 +412,11 @@ func (s *ConversationService) DeleteMessage(id uint64) error {
 			return fmt.Errorf("conversation: load message: %w", err)
 		}
 		if msg.BatchID != 0 {
-			if err := tx.Where("batch_id = ?", msg.BatchID).
-				Delete(&db.FileSnapshot{}).Error; err != nil {
-				return fmt.Errorf("conversation: delete snapshots: %w", err)
-			}
-			if err := tx.Delete(&db.SnapshotBatch{}, msg.BatchID).Error; err != nil {
+			if err := s.snapshots.DeleteBatchTx(tx, msg.BatchID); err != nil {
 				return fmt.Errorf("conversation: delete batch: %w", err)
 			}
 		}
-		if err := tx.Delete(&db.Message{}, id).Error; err != nil {
+		if err := tx.Delete(&Message{}, id).Error; err != nil {
 			return fmt.Errorf("conversation: delete message: %w", err)
 		}
 		now := time.Now()
@@ -478,7 +450,7 @@ func toConversationSummary(c Conversation) ConversationSummary {
 	}
 }
 
-func toMessageDTO(m db.Message) MessageDTO {
+func toMessageDTO(m Message) MessageDTO {
 	return MessageDTO{
 		ID:             m.ID,
 		ConversationID: m.ConversationID,

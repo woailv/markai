@@ -15,74 +15,30 @@ type Conversation struct {
 	UpdatedAt       time.Time `gorm:"not null;index" json:"updatedAt"`
 }
 
-// TableName 显式表名,避免复数化差异。
 func (Conversation) TableName() string { return "conversations" }
 
-// ConversationSummary 会话列表项。
-type ConversationSummary struct {
-	ID              uint64 `json:"id"`
-	Title           string `json:"title"`
-	TitleOverridden bool   `json:"titleOverridden"`
-	Pinned          bool   `json:"pinned"`
-	MessageCount    int    `json:"messageCount"`
-	TemplateIDs     []uint `json:"templateIds"` // 该会话关联的模板集合
-	CreatedAt       string `json:"createdAt"`   // RFC3339
-	UpdatedAt       string `json:"updatedAt"`
+// Message 会话中的一条消息。
+// Role: "user" | "assistant"
+// BatchID 非零表示该 AI 消息触发了一次文件修改批次,用于关联快照。
+type Message struct {
+	ID             uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConversationID uint64    `gorm:"not null;index:idx_msg_conv_created" json:"conversationId"`
+	Role           string    `gorm:"size:16;not null" json:"role"`
+	Content        string    `gorm:"type:text;not null" json:"content"`
+	BatchID        uint64    `gorm:"not null;default:0;index" json:"batchId"`
+	CreatedAt      time.Time `gorm:"not null;index:idx_msg_conv_created" json:"createdAt"`
+	UpdatedAt      time.Time `gorm:"not null" json:"updatedAt"`
 }
 
-// SetPinnedInput 置顶/取消置顶入参。
-type SetPinnedInput struct {
-	ConversationID uint64 `json:"conversationId"`
-	Pinned         bool   `json:"pinned"`
+func (Message) TableName() string { return "messages" }
+
+// ConversationTemplate 会话与 PromptTemplate 的多对多关联表。
+// 用于持久化某会话当前启用的模板集合,刷新后可直接恢复。
+type ConversationTemplate struct {
+	ID             uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConversationID uint64    `gorm:"not null;uniqueIndex:idx_conv_tpl_unique,priority:1;index" json:"conversationId"`
+	TemplateID     uint      `gorm:"not null;uniqueIndex:idx_conv_tpl_unique,priority:2" json:"templateId"`
+	CreatedAt      time.Time `gorm:"not null" json:"createdAt"`
 }
 
-// MessageDTO 单条消息的传输结构。
-type MessageDTO struct {
-	ID             uint64 `json:"id"`
-	ConversationID uint64 `json:"conversationId"`
-	Role           string `json:"role"`
-	Content        string `json:"content"`
-	BatchID        uint64 `json:"batchId"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
-}
-
-// ConversationDetail 会话详情:包含元数据 + 消息序列。
-type ConversationDetail struct {
-	Conversation ConversationSummary `json:"conversation"`
-	Messages     []MessageDTO        `json:"messages"`
-}
-
-// AppendMessageInput 追加消息入参。
-// 若 ConversationID 为 0,后端会自动创建新会话并返回新 id。
-type AppendMessageInput struct {
-	ConversationID uint64 `json:"conversationId"`
-	Role           string `json:"role"` // "user" | "assistant"
-	Content        string `json:"content"`
-	BatchID        uint64 `json:"batchId"` // 可选:关联的快照批次
-}
-
-// AppendMessageResult 追加消息结果。
-type AppendMessageResult struct {
-	ConversationID uint64     `json:"conversationId"`
-	Message        MessageDTO `json:"message"`
-	CreatedNew     bool       `json:"createdNew"` // 是否为本次调用新建的会话
-}
-
-// UpdateMessageInput 修改消息正文入参。
-type UpdateMessageInput struct {
-	MessageID uint64 `json:"messageId"`
-	Content   string `json:"content"`
-}
-
-// RenameConversationInput 重命名会话入参。
-type RenameConversationInput struct {
-	ConversationID uint64 `json:"conversationId"`
-	Title          string `json:"title"`
-}
-
-// SetTemplatesInput 保存会话启用的模板集合。
-type SetTemplatesInput struct {
-	ConversationID uint64 `json:"conversationId"`
-	TemplateIDs    []uint `json:"templateIds"`
-}
+func (ConversationTemplate) TableName() string { return "conversation_templates" }
