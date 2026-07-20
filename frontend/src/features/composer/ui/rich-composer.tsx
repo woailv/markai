@@ -65,6 +65,21 @@ import { buildTemplatesContext } from "@/lib/template-context"
 import { ComposerToolbar } from "./composer-toolbar"
 import type { Template } from "@/entities/template"
 
+/**
+ * 工作区拖出条目携带的自定义 MIME(与 features/workspace 保持一致)。
+ * 输入框需要识别它才能在"应用内拖拽"时也呈现落点视觉反馈。
+ */
+const INTERNAL_WORKSPACE_MIME = "application/x-workspace-paths"
+
+/** 判断 DataTransfer 是否携带可插入到输入框的载荷(外部文件或工作区路径) */
+function hasDroppableFiles(dt: DataTransfer | null | undefined): boolean {
+  if (!dt) return false
+  const types = dt.types
+  if (!types) return false
+  const arr = Array.from(types)
+  return arr.includes("Files") || arr.includes(INTERNAL_WORKSPACE_MIME)
+}
+
 interface RichComposerProps {
   onSend: (plain: string) => void
   placeholder?: string
@@ -173,7 +188,7 @@ export function RichComposer({
   )
 
   const handleDragEnter = (e: ReactDragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer?.types?.includes("Files")) return
+    if (!hasDroppableFiles(e.dataTransfer)) return
     dragCounterRef.current += 1
     if (!isDragOver) setIsDragOver(true)
     // 首次进入时挂载窗口级兜底,应对 ESC / 拖出窗口 / 窗口失焦等取消场景
@@ -183,7 +198,7 @@ export function RichComposer({
   }
 
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer?.types?.includes("Files")) {
+    if (hasDroppableFiles(e.dataTransfer)) {
       e.preventDefault()
       e.dataTransfer.dropEffect = "copy"
       // 有些浏览器/场景 dragenter 早于 mount 触发或被吞,补位保证状态一致
@@ -195,7 +210,7 @@ export function RichComposer({
   }
 
   const handleDragLeave = (e: ReactDragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer?.types?.includes("Files")) return
+    if (!hasDroppableFiles(e.dataTransfer)) return
     // 使用计数器:每次 dragenter +1、dragleave -1,归零才代表真的离开根节点。
     // 单靠 currentTarget === target 无法覆盖"拖出根节点边缘"的场景。
     dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
@@ -206,10 +221,13 @@ export function RichComposer({
 
   const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
     clearDragState()
-    if (e.dataTransfer?.types?.includes("Files")) {
+    if (hasDroppableFiles(e.dataTransfer)) {
+      // 阻止 RichEditor 内核对该 drop 的默认处理(它会读 text/plain 插入),
+      // 让工作区侧的 dragend → files:dropped 事件成为唯一的路径插入通道,
+      // 避免出现"原始路径 + markdown 引用"重复插入。
       e.preventDefault()
     }
-    // 不 stopPropagation,让 Wails 拦截器收到冒泡
+    // 不 stopPropagation,让 Wails 拦截器收到冒泡(外部文件拖入通道)
   }
 
   // 组件卸载时确保兜底监听器被移除

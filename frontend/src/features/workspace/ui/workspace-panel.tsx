@@ -272,7 +272,13 @@ function TreeArea() {
     try {
       const payload = JSON.stringify(selected)
       e.dataTransfer.setData(INTERNAL_MIME, payload)
-      e.dataTransfer.setData("text/plain", selected.join("\n"))
+      // 注意:此处不再向 text/plain 写入路径。
+      // 原因:RichEditor 内置的 drop 处理会读取 text/plain 并作为纯文本插入,
+      // 而我们又通过 dragend 的 files:dropped 事件让 RichEditor 按 markdown
+      // 文件引用格式插入一遍,导致输入框中同时出现"原始路径"与"markdown
+      // 文件引用",出现重复。工作区→输入框的插入完全由 files:dropped 通道
+      // 统一负责;工作区→工作区的内部移动/复制走 INTERNAL_MIME。
+      // 若未来需要支持拖到外部编辑器,可在此按需重新添加 text/plain。
     } catch {
       /* ignore */
     }
@@ -327,6 +333,8 @@ function TreeArea() {
     ) {
       return
     }
+    // 应用内工作区自身拖拽时,不做落点高亮(仍保留 onDrop 处理),
+    // 视觉反馈交给用户在树内的节点交互;避免与"拖向输入框"混淆。
     dragCounterRef.current += 1
     setDragOver(true)
   }, [])
