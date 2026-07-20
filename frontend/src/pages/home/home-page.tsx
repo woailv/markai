@@ -192,7 +192,10 @@ export function HomePage() {
           }
         />
       </div>
-      <StatusBar />
+      <StatusBar
+        chatFullscreen={chatFullscreen}
+        exitChatFullscreen={() => setChatFullscreen(false)}
+      />
     </div>
   )
 }
