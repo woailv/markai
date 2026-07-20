@@ -59,3 +59,21 @@ export function emitFilesDropped(
   // 这是纯前端事件,未在 Go 后端定义,所以跳过 CustomEvents 的强类型检查。
   void (Events.Emit as any)("files:dropped", payload)
 }
+
+/**
+ * 在给定屏幕坐标下查找命中的 file-drop-target 容器(带 data-file-drop-target="true")。
+ * 统一给拖拽发起方(判断落点是否有效)与接收方(判断自身是否是 winner)复用。
+ * 使用 elementsFromPoint 逐层扫描,取第一个属于任一注册目标内部的元素所在的目标。
+ */
+export function findDropTargetAtPoint(x: number, y: number): HTMLElement | null {
+  const targets = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+  )
+  if (targets.length === 0) return null
+  const stack = document.elementsFromPoint(x, y)
+  for (const el of stack) {
+    const hit = targets.find((t) => t.contains(el))
+    if (hit) return hit
+  }
+  return null
+}

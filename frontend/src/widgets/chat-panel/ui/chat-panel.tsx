@@ -896,6 +896,8 @@ function MessageEditor({
       let winner: HTMLElement | null = null
 
       if (hasCoords) {
+        // 有坐标(拖放场景):严格按落点判定,未命中即放弃 —— 与外部文件
+        // 拖入的行为保持一致,不因焦点误插。
         const stack = document.elementsFromPoint(payload.x, payload.y)
         for (const el of stack) {
           const t = allTargets.find((tgt) => tgt.contains(el))
@@ -904,9 +906,7 @@ function MessageEditor({
             break
           }
         }
-      }
-
-      if (!winner) {
+      } else {
         const focused = document.activeElement
         if (focused instanceof HTMLElement) {
           winner = allTargets.find((t) => t.contains(focused)) ?? null

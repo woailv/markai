@@ -1,3 +1,4 @@
+import { Events } from "@wailsio/runtime"
 import {
   AlertTriangle,
   FolderPlus,
@@ -35,7 +36,11 @@ import {
   pasteFromSystemClipboard,
 } from "../model/paste-actions"
 import { resolvePasteTarget, resolveTargetFromElement } from "../model/paste-target"
-import { computeVisibleOrder, emitFilesDropped } from "../model/selection-utils"
+import {
+  computeVisibleOrder,
+  emitFilesDropped,
+  findDropTargetAtPoint,
+} from "../model/selection-utils"
 import { ToastHost, toast } from "./toast"
 import { WorkspaceToolbar } from "./toolbar"
 import { TreeNode } from "./tree-node"
@@ -248,10 +253,15 @@ function TreeArea() {
    * 从树里拖出条目:若当前节点已在多选内,则整个多选被拖走;
    * 否则仅拖走该节点。
    *
-   * DataTransfer 承载三份数据以覆盖不同接收方:
+   * DataTransfer 承载两份数据以覆盖不同接收方:
    *  - INTERNAL_MIME:应用内识别(面板 onDrop 优先读)
    *  - text/plain:降级 / 外部编辑器
-   * dragend + elementsFromPoint 走 files:dropped 事件,兼容 RichEditor 输入框。
+   *
+   * dragend 仅在落点命中"非工作区"的 data-file-drop-target 时,才通过
+   * files:dropped 通知输入框(RichEditor 家族)插入路径。这样:
+   *  - 只有真正拖到输入框内才会写入路径,与外部文件拖入输入框行为一致;
+   *  - 拖到工作区/无效区域时不再误插;
+   *  - 工作区内部的移动/复制仍由本面板 onDrop 通过 INTERNAL_MIME 完成。
    */
   const handleDragStart = useCallback((e: React.DragEvent, path: string) => {
     const state = useWorkspaceStore.getState()
@@ -270,6 +280,10 @@ function TreeArea() {
     const target = e.currentTarget as HTMLElement
     const handleEnd = (ev: DragEvent) => {
       target.removeEventListener("dragend", handleEnd)
+      const dropTarget = findDropTargetAtPoint(ev.clientX, ev.clientY)
+      if (!dropTarget) return
+      // 落点在工作区自身:不 emit,内部拖动由 onDrop 走 INTERNAL_MIME 处理
+      if (scrollAreaRef.current && scrollAreaRef.current === dropTarget) return
       emitFilesDropped(selected, { x: ev.clientX, y: ev.clientY })
     }
     target.addEventListener("dragend", handleEnd)
@@ -382,11 +396,49 @@ function TreeArea() {
         return
       }
 
-      // 外部拖入:uri-list 或 files
-      await pasteFromClipboardData(dt, target)
+      // 外部资源管理器拖入:Wails 开启 EnableFileDrop 后,原生层已拦截 drop
+      // 并另行触发 files:dropped 事件(带真实绝对路径),真正的复制统一走下面
+      // 的 files:dropped 监听器,避免与之在此重复处理导致双份粘贴。参照 IDEA:
+      // 外部文件拖入工作区即复制到目标目录。
     },
     [],
   )
+
+  // 外部资源管理器拖入工作区:走 Wails EnableFileDrop 通道,原生层派发
+  // files:dropped 事件(带绝对路径)。这里以"落点是否在工作区滚动区"
+  // 判定归属,与输入框侧的 winner 检测保持一致,避免与 RichEditor 抢事件。
+  useEffect(() => {
+    const unsub = Events.On("files:dropped", (evt) => {
+      const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      const paths: string[] = payload?.paths ?? []
+      if (!paths.length) return
+      const root = scrollAreaRef.current
+      if (!root) return
+
+      const hasCoords =
+        payload.hasCoords &&
+        payload.x !== undefined &&
+        payload.y !== undefined
+      if (!hasCoords) return
+
+      const dropTarget = findDropTargetAtPoint(payload.x, payload.y)
+      if (dropTarget !== root) return
+
+      // 用命中的具体节点做目标目录解析(文件 → 父目录,目录 → 自身);
+      // 落在空白处时 resolveTargetFromElement 会退回 resolvePasteTarget()。
+      const stack = document.elementsFromPoint(payload.x, payload.y)
+      const target = resolveTargetFromElement(stack[0] ?? null)
+      if (!target) {
+        toast.error("无法粘贴", "未设置工作区目录")
+        return
+      }
+      // 参照 IDEA:外部文件拖入即复制到目标目录(不做剪切)
+      void pasteFromPaths(paths, target, false)
+    })
+    return () => {
+      unsub()
+    }
+  }, [])
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     if (isEditableTarget(e.target)) return
@@ -516,6 +568,7 @@ function TreeArea() {
 
       <div
         ref={scrollAreaRef}
+        data-file-drop-target="true"
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-1 transition-colors",
           dragOver &&

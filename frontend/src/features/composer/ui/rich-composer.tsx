@@ -247,7 +247,8 @@ export function RichComposer({
       let winner: HTMLElement | null = null
 
       if (hasCoords) {
-        // 使用 elementsFromPoint 拿到落点所有层级,取第一个属于 drop target 的
+        // 有坐标(拖放场景):严格按落点判定,未命中即放弃 —— 与外部文件
+        // 拖入输入框的行为保持一致,不能因为"只有一个输入框"就误插。
         const stack = document.elementsFromPoint(payload.x, payload.y)
         for (const el of stack) {
           const t = allTargets.find((tgt) => tgt.contains(el))
@@ -256,19 +257,14 @@ export function RichComposer({
             break
           }
         }
-      }
-
-      if (!winner) {
-        // 无坐标或落点未命中任一目标 → 用焦点判定
+      } else {
+        // 无坐标(右键菜单等主动触发):优先用焦点判定;
+        // 若只有一个输入框存在,交给它作为兜底。
         const focused = document.activeElement
         if (focused instanceof HTMLElement) {
           winner = allTargets.find((t) => t.contains(focused)) ?? null
         }
-      }
-
-      if (!winner) {
-        // 兜底:仅有输入框时(无 MessageEditor 打开),交给输入框
-        if (allTargets.length === 1 && allTargets[0] === root) {
+        if (!winner && allTargets.length === 1 && allTargets[0] === root) {
           winner = root
         }
       }
