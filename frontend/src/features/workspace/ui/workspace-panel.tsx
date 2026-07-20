@@ -346,10 +346,10 @@ function TreeArea() {
       return
     }
     e.preventDefault()
-    // 应用内且按 Shift → move;否则 copy
+    // 应用内默认 move;按住 Ctrl/Cmd 改为 copy。外部拖入始终为 copy。
     const isInternal = Array.from(types).includes(INTERNAL_MIME)
-    if (isInternal && e.shiftKey) {
-      e.dataTransfer.dropEffect = "move"
+    if (isInternal) {
+      e.dataTransfer.dropEffect = e.ctrlKey || e.metaKey ? "copy" : "move"
     } else {
       e.dataTransfer.dropEffect = "copy"
     }
@@ -389,9 +389,10 @@ function TreeArea() {
           /* ignore */
         }
         if (paths.length === 0) return
-        // 应用内默认 copy,按住 Shift 改为 cut(移动)
-        // 注:与 IDEA 不同(IDEA 默认移动,按 Ctrl 复制);此处按快捷键更少歧义的约定。
-        const cut = e.shiftKey
+        // 应用内默认 move(剪切);按住 Ctrl/Cmd 改为 copy。
+        // 与主流文件管理器(资源管理器 / Finder / IDEA)保持一致:
+        // 同应用内拖拽即移动,按 Ctrl 复制。
+        const cut = !(e.ctrlKey || e.metaKey)
         await pasteFromPaths(paths, target, cut)
         return
       }
