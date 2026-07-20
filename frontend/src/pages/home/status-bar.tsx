@@ -3,12 +3,10 @@ import { useEffect } from "react"
 
 import { MoveToBottomRight } from "@/../bindings/prompttool/internal/services/windowservice"
 import { cn } from "@/lib/utils"
-import {
-  useRightPanelStore,
-  useTabStore,
-  useWindowStore,
-  useWorkspaceStore,
-} from "@/store"
+import { useRightPanelStore } from "@/features/conversation"
+import { useTabStore } from "@/features/tabs"
+import { useWorkspaceStore } from "@/features/workspace"
+import { useWindowStore } from "@/shared/model"
 
 /**
  * 计算状态栏右侧显示的"当前标签页"简介。
