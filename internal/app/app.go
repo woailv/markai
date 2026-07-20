@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -23,7 +22,6 @@ type App struct {
 	logger    *slog.Logger
 	db        *db.DB
 	workspace *workspace.WorkspaceService
-	cancel    context.CancelFunc
 }
 
 // wailsEmitter 将 Wails application 适配为 eventbus.Emitter,
@@ -165,21 +163,16 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		}
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	StartTimeTicker(ctx, wailsApp)
-
 	return &App{
 		wails:     wailsApp,
 		logger:    logger,
 		db:        database,
 		workspace: registry.Workspace,
-		cancel:    cancel,
 	}, nil
 }
 
 // Run 启动事件循环,阻塞直到应用退出。
 func (a *App) Run() error {
-	defer a.cancel()
 	defer func() {
 		if a.workspace != nil {
 			a.workspace.Stop()

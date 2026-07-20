@@ -13,7 +13,6 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "files:dropped": app$0.FilesDroppedPayload;
-            "time": string;
         }
     }
 }
