@@ -228,8 +228,7 @@ export function WorkspaceContextMenu({
       }
 
       const blocks = supported.map(({ path, skeleton }) => {
-        const rel = toRelativePath(path, root)
-        return `\n\`\`\` ${rel}\n${skeleton}\n\`\`\`\n`
+        return `\n\`\`\` ${path}\n${skeleton}\n\`\`\`\n`
       })
       const wrapped = blocks.join("")
 
