@@ -184,45 +184,33 @@ export function WorkspaceContextMenu({
     }
   }
 
-  const fileTargets = useMemo(
-    () =>
-      targets.filter((p) => {
-        const n = nodesMap[p]
-        return n && !n.entry.isDir
-      }),
-    [targets, nodesMap],
-  )
-
+  // 骨架提取的目标即为右键 / 多选的全部路径:
+  // 后端会自动递归目录并跳过不支持的扩展名,因此这里不再过滤文件与目录。
   const handleInsertSkeleton = async () => {
-    if (fileTargets.length === 0) return
+    if (targets.length === 0) return
     try {
-      const results = await Promise.all(
-        fileTargets.map((p) =>
-          SkeletonService.Extract(p).catch(() => null),
-        ),
-      )
+      const result = await SkeletonService.Extract(targets).catch(() => null)
+      const items = result?.items ?? []
 
       const supported: { path: string; skeleton: string }[] = []
       const unsupported: string[] = []
       const failed: string[] = []
 
-      for (let i = 0; i < fileTargets.length; i++) {
-        const path = fileTargets[i]
-        const res = results[i]
-        if (!res) {
-          failed.push(path)
+      for (const item of items) {
+        if (item.error) {
+          failed.push(item.path)
           continue
         }
-        if (!res.supported) {
-          unsupported.push(path)
+        if (!item.supported) {
+          unsupported.push(item.path)
           continue
         }
-        const body = (res.skeleton ?? "").trim()
+        const body = (item.skeleton ?? "").trim()
         if (!body) {
-          unsupported.push(path)
+          unsupported.push(item.path)
           continue
         }
-        supported.push({ path, skeleton: body })
+        supported.push({ path: item.path, skeleton: body })
       }
 
       if (supported.length === 0) {
@@ -269,10 +257,7 @@ export function WorkspaceContextMenu({
   const count = targets.length
   const insertLabel = count > 1 ? `添加到输入框 (${count})` : "添加到输入框"
   const treeLabel = count > 1 ? `插入目录树 (${count})` : "插入目录树"
-  const skeletonLabel =
-    fileTargets.length > 1
-      ? `插入骨架 (${fileTargets.length})`
-      : "插入骨架"
+  const skeletonLabel = count > 1 ? `插入骨架 (${count})` : "插入骨架"
   const deleteLabel = count > 1 ? `删除 (${count})` : "删除"
 
   // 用一个 0×0 的锚点承载定位;ContextMenu 受控 open,通过 anchor 定位到点击坐标
@@ -302,7 +287,7 @@ export function WorkspaceContextMenu({
           <span>{treeLabel}</span>
         </ContextMenuItem>
         <ContextMenuItem
-          disabled={fileTargets.length === 0}
+          disabled={targets.length === 0}
           onClick={handleInsertSkeleton}
         >
           <Code2 className="h-3.5 w-3.5" />

@@ -7,5 +7,6 @@ export {
 };
 
 export type {
+    ExtractItem,
     ExtractResult
 } from "./models.js";

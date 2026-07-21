@@ -2,13 +2,12 @@
 package skeleton
 
 import (
-	"errors"
 	"fmt"
 
 	pkgskeleton "prompttool/internal/pkg/skeleton"
 )
 
-// SkeletonService 暴露给前端:根据文件路径提取代码骨架。
+// SkeletonService 暴露给前端:根据文件或目录路径批量提取代码骨架。
 type SkeletonService struct{}
 
 // NewSkeletonService 构造 SkeletonService。
@@ -16,26 +15,42 @@ func NewSkeletonService() *SkeletonService {
 	return &SkeletonService{}
 }
 
-// ExtractResult 是骨架提取的返回结构。
-// Supported 为 false 时表示该扩展名尚未支持,此时 Skeleton 为空。
-type ExtractResult struct {
+// ExtractItem 是骨架提取的单个文件结果。
+// Supported 为 false 时表示该文件扩展名尚未支持,此时 Skeleton 为空。
+// Error 非空时表示该文件在读取 / 解析阶段发生错误(不会中断其他文件)。
+type ExtractItem struct {
 	Path      string `json:"path"`
 	Skeleton  string `json:"skeleton"`
 	Supported bool   `json:"supported"`
+	Error     string `json:"error,omitempty"`
 }
 
-// Extract 读取指定路径的源码文件并返回代码骨架文本。
-// 若语言不受支持,返回 Supported=false,而非错误,便于前端做降级展示。
-func (s *SkeletonService) Extract(path string) (*ExtractResult, error) {
-	if path == "" {
-		return nil, fmt.Errorf("skeleton service: empty path")
+// ExtractResult 是骨架提取的批量返回结构。
+type ExtractResult struct {
+	Items []ExtractItem `json:"items"`
+}
+
+// Extract 接收一组路径(文件或目录),对每个可提取的源码文件返回骨架文本。
+// 目录会被递归遍历,自动跳过不受支持的扩展名。
+func (s *SkeletonService) Extract(paths []string) (*ExtractResult, error) {
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("skeleton service: empty paths")
 	}
-	text, err := pkgskeleton.Extract(path)
+	fileResults, err := pkgskeleton.ExtractPaths(paths)
 	if err != nil {
-		if errors.Is(err, pkgskeleton.ErrUnsupportedLanguage) {
-			return &ExtractResult{Path: path, Supported: false}, nil
-		}
 		return nil, err
 	}
-	return &ExtractResult{Path: path, Skeleton: text, Supported: true}, nil
+	items := make([]ExtractItem, 0, len(fileResults))
+	for _, r := range fileResults {
+		item := ExtractItem{
+			Path:      r.Path,
+			Skeleton:  r.Skeleton,
+			Supported: r.Supported,
+		}
+		if r.Err != nil {
+			item.Error = r.Err.Error()
+		}
+		items = append(items, item)
+	}
+	return &ExtractResult{Items: items}, nil
 }
