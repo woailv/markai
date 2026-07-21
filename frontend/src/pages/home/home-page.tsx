@@ -170,6 +170,7 @@ export function HomePage() {
           chatWidth={chatWidth}
           setChatWidth={setChatWidth}
           chatFullscreen={chatFullscreen}
+          hasTabs={tabs.length > 0}
           chatPanel={
             <ChatPanel
               messages={chatSession.messages}

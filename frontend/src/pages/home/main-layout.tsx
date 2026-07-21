@@ -17,6 +17,7 @@ interface MainLayoutProps {
   setChatWidth: (w: number) => void
   chatFullscreen: boolean
   chatPanel: React.ReactNode
+  hasTabs: boolean
 }
 
 /**
@@ -34,6 +35,7 @@ export function MainLayout({
   setChatWidth,
   chatFullscreen,
   chatPanel,
+  hasTabs,
 }: MainLayoutProps) {
   const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
   const workspaceWidth = useWorkspaceStore((s) => s.width)
@@ -97,16 +99,20 @@ export function MainLayout({
           </>
         )}
 
-        <ResizablePanel minSize={48} className="flex min-w-0">
-          {mainContent}
-        </ResizablePanel>
+        {(hasTabs || chatCollapsed) && (
+          <ResizablePanel minSize={48} className="flex min-w-0">
+            {hasTabs ? mainContent : <div className="flex-1" />}
+          </ResizablePanel>
+        )}
 
         {!chatCollapsed && (
           <>
-            <ResizableHandle
-              withHandle
-              className="w-px bg-border hover:bg-primary/30"
-            />
+            {hasTabs && (
+              <ResizableHandle
+                withHandle
+                className="w-px bg-border hover:bg-primary/30"
+              />
+            )}
             <ResizablePanel
               defaultSize={initialChatPx}
               minSize={CHAT_PANEL_LAYOUT.MIN_WIDTH}
