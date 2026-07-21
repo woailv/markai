@@ -86,12 +86,8 @@ export const TreeNode = memo(function TreeNode({
         return
       }
 
-      // 单击:仅选中(不展开目录)。目录展开走 chevron / 双击。
+      // 单击:仅选中(不展开目录、不打开文件)。文件打开走双击。
       selectOnly(path)
-      // 文件:进入预览 tab(斜体标题,复用同一预览槽)。
-      if (!node.entry.isDir) {
-        requestOpenFile(path, node.entry.name, "preview")
-      }
     },
     [
       node,
@@ -113,7 +109,7 @@ export const TreeNode = memo(function TreeNode({
       }
       return
     }
-    // 文件双击:固化为正式 tab
+    // 文件双击:打开为正式 tab
     requestOpenFile(path, node.entry.name, "pin")
   }, [expanded, node, path, toggleExpanded])
 
