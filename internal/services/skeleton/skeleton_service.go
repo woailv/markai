@@ -3,7 +3,6 @@ package skeleton
 
 import (
 	"fmt"
-
 	pkgskeleton "prompttool/internal/pkg/skeleton"
 )
 

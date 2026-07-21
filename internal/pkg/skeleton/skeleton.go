@@ -53,38 +53,42 @@ func ExtractPaths(paths []string) ([]FileResult, error) {
 		}
 		seen[abs] = struct{}{}
 
-		ext := strings.ToLower(filepath.Ext(p))
+		ext := strings.ToLower(filepath.Ext(abs))
 		if !IsSupportedExt(ext) {
-			results = append(results, FileResult{Path: p, Supported: false})
+			results = append(results, FileResult{Path: abs, Supported: false})
 			return
 		}
-		text, err := Extract(p)
+		text, err := Extract(abs)
 		if err != nil {
 			if errors.Is(err, ErrUnsupportedLanguage) {
-				results = append(results, FileResult{Path: p, Supported: false})
+				results = append(results, FileResult{Path: abs, Supported: false})
 				return
 			}
-			results = append(results, FileResult{Path: p, Supported: false, Err: err})
+			results = append(results, FileResult{Path: abs, Supported: false, Err: err})
 			return
 		}
-		results = append(results, FileResult{Path: p, Skeleton: text, Supported: true})
+		results = append(results, FileResult{Path: abs, Skeleton: text, Supported: true})
 	}
 
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
-		info, err := os.Stat(p)
+		absP, absErr := filepath.Abs(p)
+		if absErr != nil {
+			absP = p
+		}
+		info, err := os.Stat(absP)
 		if err != nil {
-			results = append(results, FileResult{Path: p, Err: err})
+			results = append(results, FileResult{Path: absP, Err: err})
 			continue
 		}
 		if !info.IsDir() {
-			visitFile(p)
+			visitFile(absP)
 			continue
 		}
 		// 目录:递归遍历
-		werr := filepath.WalkDir(p, func(sub string, d os.DirEntry, walkErr error) error {
+		werr := filepath.WalkDir(absP, func(sub string, d os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				// 单节点错误不阻断整体遍历
 				return nil
@@ -100,7 +104,7 @@ func ExtractPaths(paths []string) ([]FileResult, error) {
 			return nil
 		})
 		if werr != nil {
-			results = append(results, FileResult{Path: p, Err: werr})
+			results = append(results, FileResult{Path: absP, Err: werr})
 		}
 	}
 	return results, nil
