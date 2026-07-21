@@ -3,9 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   useChatSession,
   useConversationStore,
-  useRightPanelStore,
   PanelHeader,
 } from "@/features/conversation"
+// chatCollapsed / chatWidth 已下沉到 MainLayout 内部直接从 store 读取
 import { useTabStore, useOpenFileBridge, createTemplateWithDialog } from "@/features/tabs"
 import { useTemplateStore } from "@/entities/template"
 import { ChatPanel } from "@/widgets/chat-panel"
@@ -43,10 +43,6 @@ export function HomePage() {
   const openTemplateTab = useTabStore((s) => s.openTemplateTab)
   const updateTitle = useTabStore((s) => s.updateTitle)
   const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
-
-  const chatCollapsed = useRightPanelStore((s) => s.collapsed)
-  const chatWidth = useRightPanelStore((s) => s.width)
-  const setChatWidth = useRightPanelStore((s) => s.setWidth)
 
   // 聊天面板全屏状态(非持久化,刷新后还原)
   const [chatFullscreen, setChatFullscreen] = useState(false)
@@ -166,9 +162,6 @@ export function HomePage() {
     <div className="flex h-svh flex-col overflow-hidden border-t border-border">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <MainLayout
-          chatCollapsed={chatCollapsed}
-          chatWidth={chatWidth}
-          setChatWidth={setChatWidth}
           chatFullscreen={chatFullscreen}
           hasTabs={tabs.length > 0}
           chatPanel={

@@ -1,1 +1,1 @@
-export { WORKSPACE_LAYOUT, CHAT_PANEL_LAYOUT } from "./layout"
+export { WORKSPACE_LAYOUT, CHAT_PANEL_LAYOUT, EDITOR_LAYOUT } from "./layout"

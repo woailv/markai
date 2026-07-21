@@ -16,3 +16,8 @@ export const CHAT_PANEL_LAYOUT = {
   DEFAULT_WIDTH: 440,
   COLLAPSED_WIDTH: 0,
 } as const
+
+export const EDITOR_LAYOUT = {
+  MIN_WIDTH: 240,
+  DEFAULT_WIDTH: 480,
+} as const

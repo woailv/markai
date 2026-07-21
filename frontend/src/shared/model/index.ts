@@ -11,3 +11,6 @@ export { useCloseSaveHandler, getSaveHandler } from "./save-registry"
 export type { SaveHandler } from "./save-registry"
 
 export { onOpenFileRequest, requestOpenFile } from "./open-file-request"
+
+export { useLayoutStore } from "./layout.store"
+export type { LayoutStore } from "./layout.store"
