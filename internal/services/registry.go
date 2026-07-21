@@ -14,6 +14,7 @@ import (
 	"prompttool/internal/services/greet"
 	"prompttool/internal/services/prompt"
 	"prompttool/internal/services/recent"
+	"prompttool/internal/services/skeleton"
 	"prompttool/internal/services/snapshot"
 	"prompttool/internal/services/tray"
 	"prompttool/internal/services/windowstate"
@@ -73,6 +74,7 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 			application.NewService(windowSvc),
 			application.NewService(clipboard.NewClipboardService()),
 			application.NewService(traySvc),
+			application.NewService(skeleton.NewSkeletonService()),
 		},
 		Workspace: workspaceSvc,
 		Dialog:    dialogSvc,

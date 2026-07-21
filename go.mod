@@ -5,11 +5,6 @@ go 1.25.0
 require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/glebarez/sqlite v1.11.0
-	github.com/tree-sitter/go-tree-sitter v0.24.0
-	github.com/tree-sitter/tree-sitter-go v0.25.0
-	github.com/tree-sitter/tree-sitter-javascript v0.21.5-0.20240818005344-15887341e5b5
-	github.com/tree-sitter/tree-sitter-python v0.25.0
-	github.com/tree-sitter/tree-sitter-typescript v0.23.2
 	github.com/wailsapp/wails/v3 v3.0.0-alpha2.117
 	golang.org/x/sys v0.43.0
 	gorm.io/gorm v1.31.2
@@ -28,7 +23,6 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-pointer v0.0.1 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
