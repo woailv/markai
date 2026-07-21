@@ -1,5 +1,6 @@
 import {
   ClipboardCopy,
+  Code2,
   ExternalLink,
   FilePlus2,
   FilePlus,
@@ -13,6 +14,8 @@ import {
 import { useEffect, useMemo } from "react"
 
 import { FileService } from "@/../bindings/prompttool/internal/services/file"
+import { SkeletonService } from "@/../bindings/prompttool/internal/services/skeleton"
+import { toast } from "./toast"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -181,9 +184,95 @@ export function WorkspaceContextMenu({
     }
   }
 
+  const fileTargets = useMemo(
+    () =>
+      targets.filter((p) => {
+        const n = nodesMap[p]
+        return n && !n.entry.isDir
+      }),
+    [targets, nodesMap],
+  )
+
+  const handleInsertSkeleton = async () => {
+    if (fileTargets.length === 0) return
+    try {
+      const results = await Promise.all(
+        fileTargets.map((p) =>
+          SkeletonService.Extract(p).catch(() => null),
+        ),
+      )
+
+      const supported: { path: string; skeleton: string }[] = []
+      const unsupported: string[] = []
+      const failed: string[] = []
+
+      for (let i = 0; i < fileTargets.length; i++) {
+        const path = fileTargets[i]
+        const res = results[i]
+        if (!res) {
+          failed.push(path)
+          continue
+        }
+        if (!res.supported) {
+          unsupported.push(path)
+          continue
+        }
+        const body = (res.skeleton ?? "").trim()
+        if (!body) {
+          unsupported.push(path)
+          continue
+        }
+        supported.push({ path, skeleton: body })
+      }
+
+      if (supported.length === 0) {
+        const detail =
+          unsupported.length > 0
+            ? `不支持的文件类型:${unsupported
+                .slice(0, 3)
+                .map(basename)
+                .join("、")}${unsupported.length > 3 ? " 等" : ""}`
+            : failed.length > 0
+              ? "提取失败"
+              : undefined
+        toast.info("无可插入骨架", detail)
+        return
+      }
+
+      const blocks = supported.map(({ path, skeleton }) => {
+        const rel = toRelativePath(path, root)
+        return `\n\`\`\` ${rel}\n${skeleton}\n\`\`\`\n`
+      })
+      const wrapped = blocks.join("")
+
+      const inserted = insertTextIntoActiveEditor(wrapped)
+      if (!inserted) {
+        await navigator.clipboard.writeText(wrapped)
+        toast.success(
+          "已复制骨架到剪贴板",
+          supported.length > 1 ? `共 ${supported.length} 个文件` : undefined,
+        )
+      } else if (unsupported.length > 0) {
+        toast.info(
+          `已插入骨架(跳过 ${unsupported.length} 个不支持文件)`,
+          unsupported
+            .slice(0, 3)
+            .map(basename)
+            .join("、") + (unsupported.length > 3 ? " 等" : ""),
+        )
+      }
+    } catch (err) {
+      toast.error("插入骨架失败", String((err as Error)?.message ?? err))
+    }
+  }
+
   const count = targets.length
   const insertLabel = count > 1 ? `添加到输入框 (${count})` : "添加到输入框"
   const treeLabel = count > 1 ? `插入目录树 (${count})` : "插入目录树"
+  const skeletonLabel =
+    fileTargets.length > 1
+      ? `插入骨架 (${fileTargets.length})`
+      : "插入骨架"
   const deleteLabel = count > 1 ? `删除 (${count})` : "删除"
 
   // 用一个 0×0 的锚点承载定位;ContextMenu 受控 open,通过 anchor 定位到点击坐标
@@ -211,6 +300,13 @@ export function WorkspaceContextMenu({
         <ContextMenuItem onClick={handleInsertTree}>
           <ListTree className="h-3.5 w-3.5" />
           <span>{treeLabel}</span>
+        </ContextMenuItem>
+        <ContextMenuItem
+          disabled={fileTargets.length === 0}
+          onClick={handleInsertSkeleton}
+        >
+          <Code2 className="h-3.5 w-3.5" />
+          <span>{skeletonLabel}</span>
         </ContextMenuItem>
 
         <ContextMenuSeparator />
@@ -322,3 +418,9 @@ function toRelativePath(abs: string, root: string): string {
   if (abs.startsWith(prefix)) return abs.slice(prefix.length)
   return abs
 }
+
+function basename(p: string): string {
+  const idx = Math.max(p.lastIndexOf("\\"), p.lastIndexOf("/"))
+  return idx >= 0 ? p.slice(idx + 1) : p
+}
+
