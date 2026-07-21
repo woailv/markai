@@ -228,7 +228,7 @@ export function WorkspaceContextMenu({
       }
 
       const blocks = supported.map(({ path, skeleton }) => {
-        return `\n\`\`\` ${path}\n${skeleton}\n\`\`\`\n`
+        return `\n<skeleton path="${path}">\n${skeleton}\n</skeleton>\n`
       })
       const wrapped = blocks.join("")
 
