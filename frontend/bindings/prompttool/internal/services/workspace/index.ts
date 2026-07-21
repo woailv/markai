@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    ListAllWorkspaceInput,
     ListWorkspaceInput,
     SetWorkspaceRootInput,
     WorkspaceEntry,

@@ -36,6 +36,16 @@ export function List($in: $models.ListWorkspaceInput): $CancellablePromise<$mode
 }
 
 /**
+ * ListAll 递归返回根目录下所有条目(目录 + 文件)的元数据。
+ * 前端调用一次即可拿到完整目录树,配合本地搜索命中子目录里的名字。
+ * 命中 IgnoreDirs 的目录及其子树整体跳过;单个子目录读取失败会被忽略,不阻断整体。
+ * 若 watcher 就绪,过程中会把新遇到的目录加入监听集合。
+ */
+export function ListAll($in: $models.ListAllWorkspaceInput): $CancellablePromise<$models.WorkspaceEntry[] | null> {
+    return $Call.ByID(3135130925, $in);
+}
+
+/**
  * Refresh 强制重新读取指定目录一层内容,不区分是否已缓存(前端负责缓存)。
  * 相当于 List 的语义快捷方式,便于前端右键"刷新"直接调用。
  */

@@ -53,7 +53,7 @@ export function useWorkspaceEvents() {
               info.degraded ? "degraded" : info.watching ? "watching" : "idle",
               info.reason,
             )
-            await loadRootChildren()
+            await loadEntireTree()
           } else {
             store.getState().setWatchStatus("error", info.reason || "根目录不存在")
           }
@@ -85,11 +85,40 @@ export function useWorkspaceEvents() {
   }, [])
 }
 
-async function loadRootChildren() {
-  const list = (await WorkspaceService.List({ path: "" })) || []
-  const sorted = sortEntries(list)
-  useWorkspaceStore.getState().upsertNodes(sorted)
-  useWorkspaceStore.getState().setRootChildren(sorted.map((e) => e.path))
+/**
+ * loadEntireTree 一次性拉取根目录下的所有条目并写入 store。
+ * 目的:让本地搜索能够匹配到任意深度的子目录/文件名,而不必先手动展开。
+ *
+ * 同时把每个目录标记为 loaded(包括空目录),避免展开时再触发 List。
+ * IncludeHidden 一律传 true,展示与否交由前端 showHidden 状态在渲染层过滤。
+ */
+async function loadEntireTree() {
+  const state = useWorkspaceStore.getState()
+  const root = state.root
+  const all =
+    (await WorkspaceService.ListAll({ includeHidden: true })) || []
+
+  useWorkspaceStore.getState().upsertNodes(all)
+
+  const byParent = new Map<string, WorkspaceEntry[]>()
+  for (const entry of all) {
+    const bucket = byParent.get(entry.parent)
+    if (bucket) bucket.push(entry)
+    else byParent.set(entry.parent, [entry])
+  }
+
+  const rootBucket = byParent.get(root) ?? []
+  useWorkspaceStore
+    .getState()
+    .setRootChildren(sortEntries(rootBucket).map((e) => e.path))
+
+  const store = useWorkspaceStore.getState()
+  for (const entry of all) {
+    if (!entry.isDir) continue
+    const bucket = byParent.get(entry.path)
+    const sorted = bucket ? sortEntries(bucket).map((e) => e.path) : []
+    store.setChildren(entry.path, sorted)
+  }
 }
 
 /**
@@ -130,11 +159,12 @@ export async function refreshDirectoryChildren(path: string): Promise<void> {
   }
 }
 
+/**
+ * refreshRoot 手动刷新时同样一次性拉取整棵目录树,
+ * 与首次加载路径保持一致,保证搜索始终能命中最新子目录。
+ */
 export async function refreshRoot(): Promise<void> {
-  const list = (await WorkspaceService.Refresh({ path: "" })) || []
-  const sorted = sortEntries(list)
-  useWorkspaceStore.getState().upsertNodes(sorted)
-  useWorkspaceStore.getState().setRootChildren(sorted.map((e) => e.path))
+  await loadEntireTree()
 }
 
 /**

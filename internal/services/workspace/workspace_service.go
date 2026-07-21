@@ -202,6 +202,48 @@ func (s *WorkspaceService) Refresh(in ListWorkspaceInput) ([]WorkspaceEntry, err
 	return s.List(in)
 }
 
+// ListAll 递归返回根目录下所有条目(目录 + 文件)的元数据。
+// 前端调用一次即可拿到完整目录树,配合本地搜索命中子目录里的名字。
+// 命中 IgnoreDirs 的目录及其子树整体跳过;单个子目录读取失败会被忽略,不阻断整体。
+// 若 watcher 就绪,过程中会把新遇到的目录加入监听集合。
+func (s *WorkspaceService) ListAll(in ListAllWorkspaceInput) ([]WorkspaceEntry, error) {
+	s.mu.RLock()
+	root := s.root
+	watcher := s.watcher
+	s.mu.RUnlock()
+
+	if root == "" {
+		return nil, errors.New("workspace: root not set")
+	}
+
+	var entries []WorkspaceEntry
+	walkAllEntries(root, in.IncludeHidden, s.ignoreSet, watcher, &entries)
+	return entries, nil
+}
+
+// walkAllEntries 深度优先展平目录树。IsSymlink 目录不进入,防止跟随符号链接绕圈。
+func walkAllEntries(
+	dir string,
+	includeHidden bool,
+	ignoreSet map[string]struct{},
+	watcher *workspaceWatcher,
+	out *[]WorkspaceEntry,
+) {
+	list, err := listDirEntries(dir, includeHidden, ignoreSet)
+	if err != nil {
+		return
+	}
+	for _, entry := range list {
+		*out = append(*out, entry)
+		if entry.IsDir && !entry.IsSymlink {
+			if watcher != nil {
+				_ = watcher.Watch(entry.Path)
+			}
+			walkAllEntries(entry.Path, includeHidden, ignoreSet, watcher, out)
+		}
+	}
+}
+
 // emitAndBuildEntry watcher 回调:根据变更类型构造事件并推送。
 // path 为受影响的绝对路径,parent 为其所在目录。
 func (s *WorkspaceService) emitAndBuildEntry(evType, path string) {

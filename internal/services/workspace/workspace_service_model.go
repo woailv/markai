@@ -30,6 +30,12 @@ type ListWorkspaceInput struct {
 	IncludeHidden bool   `json:"includeHidden,omitempty"`
 }
 
+// ListAllWorkspaceInput 一次性拉取整棵目录树的入参。
+// 命中 IgnoreDirs 的目录及其子树整体跳过。
+type ListAllWorkspaceInput struct {
+	IncludeHidden bool `json:"includeHidden,omitempty"`
+}
+
 // SetWorkspaceRootInput 设置根目录入参。
 type SetWorkspaceRootInput struct {
 	Root string `json:"root"`
