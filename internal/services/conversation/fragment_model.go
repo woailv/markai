@@ -15,6 +15,9 @@ const (
 	FragmentRequestFile          FragmentKind = "REQUEST_FILE"
 	FragmentRequestDirectoryList FragmentKind = "REQUEST_DIRECTORY_LIST"
 	FragmentParseError           FragmentKind = "PARSE_ERROR"
+	// FragmentText 表示不含指令的普通文本段。Before 存原文,
+	// 便于前端按 order_index 顺序渲染整条消息而无需依赖 message.content。
+	FragmentText FragmentKind = "TEXT"
 )
 
 // FragmentStatus 是片段的生命周期状态。
@@ -34,6 +37,8 @@ const (
 	StatusIgnored     FragmentStatus = "ignored"
 	StatusResolved    FragmentStatus = "resolved"
 	StatusParseError  FragmentStatus = "parse_error"
+	// StatusText 是 TEXT 片段的终态,不参与任何自动/手动应用。
+	StatusText FragmentStatus = "text"
 )
 
 // MessageFragment 是 AI 消息里被结构化拆分出的单个修改条目。

@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
@@ -51,7 +52,11 @@ import {
   extractRequestPathsFromMessages,
 } from "@/lib/file-context"
 import { buildTemplatesContext } from "@/lib/template-context"
-import { MessageContent, formatRelativeTime } from "@/entities/message"
+import {
+  MessageContent,
+  formatRelativeTime,
+  fragmentsToPlainText,
+} from "@/entities/message"
 import type { ChatMessage } from "@/entities/message"
 import type { Template } from "@/entities/template"
 
@@ -226,6 +231,7 @@ export function ChatPanel({
                       templates={templates}
                     />
                   )
+                  // (rows derive plain text from msg.fragments internally)
                 })}
               </div>
             )}
@@ -277,19 +283,18 @@ function ChatAreaContextMenu({
     if (!hasMessages || copying) return
     setCopying(true)
     try {
+      const plainOf = (m: ChatMessage) => fragmentsToPlainText(m.fragments)
       const conversation = messages
         .map(
           (m) =>
-            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${m.content}`,
+            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${plainOf(m)}`,
         )
         .join("\n\n---\n\n")
 
-      const paths = extractFilePathsFromMessages(messages.map((m) => m.content))
+      const contents = messages.map(plainOf)
+      const paths = extractFilePathsFromMessages(contents)
       const filesContext = await buildFilesContext(paths)
-      const templatesContext = buildTemplatesContext(
-        messages.map((m) => m.content),
-        templates,
-      )
+      const templatesContext = buildTemplatesContext(contents, templates)
 
       const prefixes = [templatesContext, filesContext].filter(
         (s) => s.length > 0,
@@ -381,6 +386,10 @@ function UserBubble({
   onEdit?: (id: number, newContent: string) => void
   templates: Template[]
 }) {
+  const plainContent = useMemo(
+    () => fragmentsToPlainText(msg.fragments),
+    [msg.fragments],
+  )
   const {
     editing,
     editContent,
@@ -393,7 +402,9 @@ function UserBubble({
     handleSave,
     handleCancelEdit,
     handleStartEdit,
-  } = useMessageActions(msg, templates, onEdit, { autoCollapse: true })
+  } = useMessageActions(msg, plainContent, templates, onEdit, {
+    autoCollapse: true,
+  })
 
   // 圆角策略:根据分组位置动态调整右上/右下角
   // 独立单条:! isGrouped && ! isGroupedNext -> 仅右上收紧
@@ -448,12 +459,12 @@ function UserBubble({
             />
           ) : collapsed ? (
             <UserBubbleCollapsed
-              content={msg.content}
+              content={plainContent}
               lineCount={lineCount}
               onExpand={() => setCollapsed(false)}
             />
           ) : (
-            <MessageContent content={msg.content} />
+            <MessageContent content={plainContent} />
           )}
 
           {!editing && typeof msg.id === "number" && (
@@ -534,6 +545,10 @@ function AssistantRow({
   onEdit?: (id: number, newContent: string) => void
   templates: Template[]
 }) {
+  const plainContent = useMemo(
+    () => fragmentsToPlainText(msg.fragments),
+    [msg.fragments],
+  )
   const {
     editing,
     editContent,
@@ -546,7 +561,7 @@ function AssistantRow({
     handleSave,
     handleCancelEdit,
     handleStartEdit,
-  } = useMessageActions(msg, templates, onEdit)
+  } = useMessageActions(msg, plainContent, templates, onEdit)
 
   return (
     <div
@@ -591,7 +606,6 @@ function AssistantRow({
           ) : (
             <AssistantMessage
               messageId={msg.id}
-              content={msg.content}
               fragments={msg.fragments}
             />
           )}
@@ -643,19 +657,19 @@ function AssistantRow({
 
 function useMessageActions(
   msg: ChatMessage,
+  plainContent: string,
   templates: Template[],
   onEdit?: (id: number, newContent: string) => void,
   options?: { autoCollapse?: boolean },
 ) {
   const [editing, setEditing] = useState(false)
-  const [editContent, setEditContent] = useState(msg.content)
+  const [editContent, setEditContent] = useState(plainContent)
   const [copied, setCopied] = useState(false)
 
   // 自动折叠阈值
   const AUTO_COLLAPSE_LINES = 12
   const AUTO_COLLAPSE_CHARS = 800
 
-  const plainContent = msg.content
   const lineCount = plainContent.split("\n").length
   const charCount = plainContent.length
   const shouldAutoCollapse =
@@ -689,7 +703,7 @@ function useMessageActions(
   const handleCopy = async () => {
     try {
       const isUser = msg.role === "user"
-      const body = msg.content
+      const body = plainContent
 
       let finalText: string
       if (isUser) {
@@ -719,7 +733,7 @@ function useMessageActions(
 
   const handleSave = () => {
     if (
-      editContent.trim() !== msg.content.trim() &&
+      editContent.trim() !== plainContent.trim() &&
       onEdit &&
       typeof msg.id === "number"
     ) {
@@ -741,10 +755,10 @@ function useMessageActions(
     handleSave,
     handleCancelEdit: () => {
       setEditing(false)
-      setEditContent(msg.content)
+      setEditContent(plainContent)
     },
     handleStartEdit: () => {
-      setEditContent(msg.content)
+      setEditContent(plainContent)
       setEditing(true)
     },
     setEditing,

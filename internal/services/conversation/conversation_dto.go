@@ -25,7 +25,6 @@ type MessageDTO struct {
 	ID             uint64               `json:"id"`
 	ConversationID uint64               `json:"conversationId"`
 	Role           string               `json:"role"`
-	Content        string               `json:"content"`
 	BatchID        uint64               `json:"batchId"`
 	CreatedAt      string               `json:"createdAt"`
 	UpdatedAt      string               `json:"updatedAt"`

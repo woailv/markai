@@ -122,14 +122,32 @@ export function useChatSession({
       }
 
       const tempId = `temp-${Date.now()}`
+      // 后端不再返回 content,前端也统一按 fragments 渲染:
+      // 本地为 optimistic 消息合成一条 TEXT 片段承载原文,后端回包后整体替换。
+      const tempFragment: MessageFragmentDTO = {
+        id: -1,
+        messageId: -1,
+        orderIndex: 0,
+        kind: "TEXT",
+        path: "",
+        destination: "",
+        rawStart: 0,
+        rawEnd: payload.length,
+        blockIndex: 0,
+        before: payload,
+        after: "",
+        status: "text",
+        matchReason: "",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
       setMessages((prev) => [
         ...prev,
         {
           id: tempId,
           role: looksLikeAssistant ? "assistant" : "user",
-          content: payload,
           createdAt: new Date().toISOString(),
-          fragments: [],
+          fragments: [tempFragment],
         },
       ])
 
@@ -201,15 +219,15 @@ export function useChatSession({
         messageId: msgId,
         content: newContent,
       })
-      if (updated) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === msgId ? { ...m, content: newContent } : m,
-          ),
-        )
+      if (!updated) return
+      // 后端 UpdateMessage 不重新解析 fragments,而消息内容已被替换,
+      // 因此本地无法基于 fragments 反映最新编辑结果。为保证展示与
+      // 数据库一致,这里改为整会话重载(fragments 与 message 一起拉回)。
+      if (currentConvId != null) {
+        await loadConversation(currentConvId)
       }
     },
-    [],
+    [currentConvId, loadConversation],
   )
 
   const toggleTemplate = useCallback(
@@ -256,7 +274,6 @@ function normalizeMessage(m: MessageDTO): ChatMessage {
   return {
     id: m.id,
     role: m.role as "user" | "assistant",
-    content: m.content,
     createdAt: m.createdAt,
     fragments: m.fragments ?? [],
   }

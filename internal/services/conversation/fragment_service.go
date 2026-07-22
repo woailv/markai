@@ -82,20 +82,51 @@ func (s *FragmentService) getEmitter() eventbus.Emitter {
 
 // ---------- 构建 ----------
 
-// BuildFragmentsFromContent 把 AI 消息原文解析为待落库的 MessageFragment 切片。
-// 不写数据库;messageID 用于填充关联字段,可为 0(调用方稍后回填)。
+// BuildFragmentsFromContent 把消息原文解析为待落库的 MessageFragment 切片。
+// 无指令的普通文本段会被包装成 FragmentText,原文按顺序保存在 Before 字段里。
+// 这样前端只需按 order_index 顺序渲染 fragments 即可复原整条消息,
+// 不再依赖 message.content。messageID 可为 0(调用方稍后回填)。
 func BuildFragmentsFromContent(messageID uint64, content string) []MessageFragment {
 	ranges := aiproto.ParseCommandsWithRanges(content)
-	out := make([]MessageFragment, 0, len(ranges))
+	out := make([]MessageFragment, 0, len(ranges)*2+1)
 	order := 0
+	cursor := 0
+
+	// appendText 把 [from,to) 之间的原文作为 TEXT 段追加(允许空串跳过)。
+	appendText := func(from, to int) {
+		if from >= to {
+			return
+		}
+		out = append(out, MessageFragment{
+			MessageID:  messageID,
+			OrderIndex: order,
+			Kind:       FragmentText,
+			RawStart:   from,
+			RawEnd:     to,
+			Before:     content[from:to],
+			Status:     StatusText,
+		})
+		order++
+	}
+
 	for _, r := range ranges {
+		// 先补齐上一命令与当前命令之间的普通文本。
+		appendText(cursor, r.Start)
+		cursor = r.End
+
 		if r.Item.IsParseError() {
+			// 解析错误也把原始片段文本存下来,方便前端原样展示。
+			raw := ""
+			if r.Start >= 0 && r.End <= len(content) && r.Start < r.End {
+				raw = content[r.Start:r.End]
+			}
 			out = append(out, MessageFragment{
 				MessageID:   messageID,
 				OrderIndex:  order,
 				Kind:        FragmentParseError,
 				RawStart:    r.Start,
 				RawEnd:      r.End,
+				Before:      raw,
 				Status:      StatusParseError,
 				MatchReason: r.Item.Message,
 			})
@@ -190,6 +221,8 @@ func BuildFragmentsFromContent(messageID uint64, content string) []MessageFragme
 			order++
 		}
 	}
+	// 末尾残余的普通文本。
+	appendText(cursor, len(content))
 	return out
 }
 
@@ -399,7 +432,7 @@ func (s *FragmentService) SetFragmentStatus(in SetFragmentStatusInput) (*Message
 func (s *FragmentService) applyOne(convID uint64, frag *MessageFragment, batchID uint64) {
 	// 已处于终态的直接跳过。
 	switch frag.Status {
-	case StatusApplied, StatusIgnored, StatusParseError, StatusResolved:
+	case StatusApplied, StatusIgnored, StatusParseError, StatusResolved, StatusText:
 		return
 	}
 

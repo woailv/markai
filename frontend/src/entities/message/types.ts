@@ -3,10 +3,35 @@ import type { MessageFragmentDTO } from "@/../bindings/prompttool/internal/servi
 export interface ChatMessage {
   id: number | string
   role: "user" | "assistant"
-  content: string
   createdAt: string
-  /** 后端下发的结构化修改片段。仅 AI 消息可能非空。 */
+  /**
+   * 后端下发的结构化片段。所有消息(user / assistant)都按片段渲染:
+   * - TEXT 片段(kind === "TEXT"):普通文本,原文存在 before 里
+   * - 其他 kind:AI 指令(WRITE_FILE / EDIT_BLOCK / …)
+   */
   fragments?: MessageFragmentDTO[]
+}
+
+/**
+ * 从 fragments 中重建可读的纯文本表示,用于:
+ *  - 用户消息气泡的展示
+ *  - 复制到剪贴板 / 提取文件 token / 编辑输入初值
+ *
+ * 规则:按 orderIndex 升序拼接;TEXT / PARSE_ERROR 片段用 before 原文,
+ * 其他指令片段有专门卡片渲染,不参与纯文本重建。
+ */
+export function fragmentsToPlainText(
+  fragments: MessageFragmentDTO[] | undefined | null,
+): string {
+  if (!fragments || fragments.length === 0) return ""
+  const sorted = [...fragments].sort((a, b) => a.orderIndex - b.orderIndex)
+  const parts: string[] = []
+  for (const f of sorted) {
+    if (f.kind === "TEXT" || f.kind === "PARSE_ERROR") {
+      parts.push(f.before)
+    }
+  }
+  return parts.join("")
 }
 
 /**

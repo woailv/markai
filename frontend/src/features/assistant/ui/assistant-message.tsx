@@ -12,93 +12,123 @@ import { isApplyableStatus } from "@/entities/exec-command"
 import { FragmentCard } from "./fragment-card"
 
 interface AssistantMessageProps {
-  /** 消息 id 用来驱动"全部应用"。前端持有的 temp-id 会是字符串,那种情况按无 fragments 处理。 */
+  /** 消息 id 用来驱动"全部应用"。前端持有的 temp-id 会是字符串,那种情况忽略按钮。 */
   messageId?: number | string
-  content: string
   fragments?: MessageFragmentDTO[]
 }
 
 /**
- * AI 消息渲染:
- *   1. 无 fragments → 纯 markdown。
- *   2. 有 fragments → 按 rawStart/rawEnd 把原文切成"文本段 / 片段组"。
- *      同一 rawStart+rawEnd 的多个 EDIT_BLOCK 归成一组,共享一个"编辑 <path>"卡壳。
- *   3. 顶部聚合条呈现整体状态,含"应用全部可用片段"按钮。
+ * AI 消息渲染(纯 fragments 驱动,后端不再回传 content):
+ *   1. 无可渲染片段 → 空占位。
+ *   2. 按 orderIndex 升序遍历 fragments:
+ *      - TEXT / PARSE_ERROR 片段的 before 作为文本段渲染为 markdown
+ *      - 指令片段按 (rawStart, rawEnd) 相邻合并(仅 EDIT_BLOCK)成组渲染为卡片
+ *   3. 顶部聚合条只统计"指令片段",TEXT 不计入变更单。
  */
 export function AssistantMessage({
-  messageId,
-  content,
-  fragments,
-}: AssistantMessageProps) {
+                                   messageId,
+                                   fragments,
+                                 }: AssistantMessageProps) {
   const frags = fragments ?? []
-  const groups = useMemo(() => groupFragments(frags), [frags])
+  const segments = useMemo(() => buildSegments(frags), [frags])
+  const actionableFrags = useMemo(
+      () => frags.filter((f) => f.kind !== "TEXT"),
+      [frags],
+  )
 
-  if (frags.length === 0 || groups.length === 0) {
-    return (
-      <div className="min-w-0 max-w-none">
-        <RichEditor
-          value={content}
-          mode="readonly"
-          markdown
-          fileTokens={{ enabled: true }}
-          templateTokens={{ enabled: true }}
-          className="min-w-0 max-w-none"
-        />
-      </div>
-    )
+  if (segments.length === 0) {
+    return <div className="min-w-0 max-w-none" />
   }
 
-  const applyableCount = frags.filter((f) => isApplyableStatus(f.status)).length
-
-  // 切片:相邻 group 之间是文本段。
-  const segments: Array<
-    | { type: "text"; value: string; key: string }
-    | { type: "group"; group: FragmentGroup; key: string }
-  > = []
-  let cursor = 0
-  groups.forEach((g, i) => {
-    if (g.rawStart > cursor) {
-      const chunk = content.slice(cursor, g.rawStart)
-      if (chunk.trim().length > 0) {
-        segments.push({ type: "text", value: chunk, key: `t-${i}` })
-      }
-    }
-    segments.push({ type: "group", group: g, key: `g-${i}` })
-    cursor = g.rawEnd
-  })
-  if (cursor < content.length) {
-    const tail = content.slice(cursor)
-    if (tail.trim().length > 0) {
-      segments.push({ type: "text", value: tail, key: "t-tail" })
-    }
-  }
+  const applyableCount = actionableFrags.filter((f) =>
+      isApplyableStatus(f.status),
+  ).length
+  const hasActionable = actionableFrags.length > 0
 
   return (
-    <div className="min-w-0 max-w-none">
-      <TopBar
-        messageId={typeof messageId === "number" ? messageId : undefined}
-        fragments={frags}
-        applyableCount={applyableCount}
-      />
-      {segments.map((seg) => {
-        if (seg.type === "text") {
-          return (
-            <div key={seg.key} className="my-1">
-              <RichEditor
-                value={seg.value}
-                mode="readonly"
-                markdown
-                fileTokens={{ enabled: true }}
-                templateTokens={{ enabled: true }}
-                className="min-w-0 max-w-none"
-              />
-            </div>
-          )
-        }
-        return <GroupView key={seg.key} group={seg.group} />
-      })}
-    </div>
+      <div className="min-w-0 max-w-none">
+        {hasActionable && (
+            <TopBar
+                messageId={typeof messageId === "number" ? messageId : undefined}
+                fragments={actionableFrags}
+                applyableCount={applyableCount}
+            />
+        )}
+        {segments.map((seg) => {
+          if (seg.type === "text") {
+            if (seg.value.trim().length === 0) return null
+            return (
+                <div key={seg.key} className="my-1">
+                  <RichEditor
+                      value={seg.value}
+                      mode="readonly"
+                      markdown
+                      fileTokens={{ enabled: true }}
+                      templateTokens={{ enabled: true }}
+                      className="min-w-0 max-w-none"
+                  />
+                </div>
+            )
+          }
+          return <GroupView key={seg.key} group={seg.group} />
+        })}
+      </div>
   )
+}
+
+type Segment =
+    | { type: "text"; value: string; key: string }
+    | { type: "group"; group: FragmentGroup; key: string }
+
+/**
+ * 按 orderIndex 遍历 fragments,把 TEXT 与指令组交错串起来。
+ * 相邻的 EDIT_BLOCK(相同 rawStart+rawEnd)合并到同一组以复用"编辑 <path>"卡壳。
+ */
+function buildSegments(fragments: MessageFragmentDTO[]): Segment[] {
+  if (fragments.length === 0) return []
+  const sorted = [...fragments].sort((a, b) => a.orderIndex - b.orderIndex)
+  const segments: Segment[] = []
+  let textBuf = ""
+  let textKey = 0
+
+  const flushText = () => {
+    if (textBuf.length === 0) return
+    segments.push({ type: "text", value: textBuf, key: `t-${textKey++}` })
+    textBuf = ""
+  }
+
+  for (const f of sorted) {
+    if (f.kind === "TEXT") {
+      textBuf += f.before
+      continue
+    }
+    flushText()
+    const last = segments[segments.length - 1]
+    if (
+        last &&
+        last.type === "group" &&
+        last.group.headerKind === "EDIT_BLOCK" &&
+        f.kind === "EDIT_BLOCK" &&
+        last.group.rawStart === f.rawStart &&
+        last.group.rawEnd === f.rawEnd
+    ) {
+      last.group.fragments.push(f)
+      continue
+    }
+    segments.push({
+      type: "group",
+      key: `g-${f.id}`,
+      group: {
+        rawStart: f.rawStart,
+        rawEnd: f.rawEnd,
+        headerPath: headerPathOf(f),
+        headerKind: f.kind,
+        fragments: [f],
+      },
+    })
+  }
+  flushText()
+  return segments
 }
 
 // ---------- Fragment 分组 ----------
@@ -110,39 +140,6 @@ interface FragmentGroup {
   headerPath: string
   headerKind: string
   fragments: MessageFragmentDTO[]
-}
-
-/**
- * 把 fragments 按其原文 rawRange 分组:
- * - 同一 EDIT_FILE 标签展开出的多个 EDIT_BLOCK 共享 (rawStart, rawEnd) → 一组
- * - 其他每条 fragment 自成一组
- * 保序:按 order_index 升序。
- */
-function groupFragments(fragments: MessageFragmentDTO[]): FragmentGroup[] {
-  if (fragments.length === 0) return []
-  const sorted = [...fragments].sort((a, b) => a.orderIndex - b.orderIndex)
-  const groups: FragmentGroup[] = []
-  for (const f of sorted) {
-    const last = groups[groups.length - 1]
-    if (
-      last &&
-      last.rawStart === f.rawStart &&
-      last.rawEnd === f.rawEnd &&
-      last.headerKind === f.kind &&
-      f.kind === "EDIT_BLOCK"
-    ) {
-      last.fragments.push(f)
-      continue
-    }
-    groups.push({
-      rawStart: f.rawStart,
-      rawEnd: f.rawEnd,
-      headerPath: headerPathOf(f),
-      headerKind: f.kind,
-      fragments: [f],
-    })
-  }
-  return groups
 }
 
 function headerPathOf(f: MessageFragmentDTO): string {

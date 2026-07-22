@@ -402,18 +402,24 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			return fmt.Errorf("conversation: append message: %w", err)
 		}
 
-		// 拆分并落库 fragments;此时 status 均为 pending / parse_error。
-		var fragDTOs []MessageFragmentDTO
-		if role == roleAssistant {
-			frags := BuildFragmentsFromContent(msg.ID, in.Content)
-			if len(frags) > 0 {
-				if err := InsertFragmentsTx(tx, frags); err != nil {
-					return fmt.Errorf("conversation: insert fragments: %w", err)
+		// 所有消息都按块存储:普通文本 → FragmentText,指令 → 对应 kind。
+		// 前端依赖 fragments 顺序渲染整条消息,不再读取 message.content。
+		// 仅 assistant 消息里含可执行指令时才触发自动应用。
+		fragDTOs := []MessageFragmentDTO{}
+		frags := BuildFragmentsFromContent(msg.ID, in.Content)
+		if len(frags) > 0 {
+			if err := InsertFragmentsTx(tx, frags); err != nil {
+				return fmt.Errorf("conversation: insert fragments: %w", err)
+			}
+			fragDTOs = make([]MessageFragmentDTO, 0, len(frags))
+			hasActionable := false
+			for _, f := range frags {
+				fragDTOs = append(fragDTOs, toFragmentDTO(f))
+				if f.Status == StatusPending {
+					hasActionable = true
 				}
-				fragDTOs = make([]MessageFragmentDTO, 0, len(frags))
-				for _, f := range frags {
-					fragDTOs = append(fragDTOs, toFragmentDTO(f))
-				}
+			}
+			if role == roleAssistant && hasActionable {
 				autoApplyMsg = msg.ID
 			}
 		}
@@ -429,11 +435,7 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 
 		result.ConversationID = convID
 		dto := toMessageDTO(msg)
-		if fragDTOs == nil {
-			dto.Fragments = []MessageFragmentDTO{}
-		} else {
-			dto.Fragments = fragDTOs
-		}
+		dto.Fragments = fragDTOs
 		result.Message = dto
 		return nil
 	})
@@ -548,12 +550,14 @@ func toConversationSummary(c Conversation) ConversationSummary {
 	}
 }
 
+// toMessageDTO 构造消息 DTO。注意:Content 不再回传给前端——前端应按
+// Fragments 顺序渲染。原文仍保留在数据库 message.content 中,供后端
+// 重新解析、导出、或调试使用。
 func toMessageDTO(m Message) MessageDTO {
 	return MessageDTO{
 		ID:             m.ID,
 		ConversationID: m.ConversationID,
 		Role:           m.Role,
-		Content:        m.Content,
 		BatchID:        m.BatchID,
 		CreatedAt:      m.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      m.UpdatedAt.Format(time.RFC3339),
