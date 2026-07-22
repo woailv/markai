@@ -27,6 +27,8 @@ import {
   siblingNamesOf,
 } from "../model/file-ops"
 import { InlineNameEditor } from "./inline-name-editor"
+import { RootNode } from "./root-node"
+import { WorkspaceSearchDialog } from "./search-dialog"
 import {
   copyPathsToSystemClipboard,
   pasteFromClipboardData,
@@ -112,6 +114,16 @@ function TreeArea() {
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [deleteTargets, setDeleteTargets] = useState<string[] | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [searchScope, setSearchScope] = useState<string | null>(null)
+  /**
+   * 根节点默认展开;用户主动收起后本地记忆。切换根目录时重置。
+   * 未使用 store.expanded 是因为根路径不在 nodes 表中,把它塞进 expanded
+   * 会与既有语义(expanded 只跟踪目录节点)混淆。
+   */
+  const [rootExpanded, setRootExpanded] = useState(true)
+  useEffect(() => {
+    setRootExpanded(true)
+  }, [root])
   const editing = useEditingStore((s) => s.editing)
   const clearEditing = useEditingStore((s) => s.clear)
   const selectedPath = useWorkspaceStore((s) => s.selectedPath)
@@ -164,6 +176,20 @@ function TreeArea() {
       setMenu({ x: e.clientX, y: e.clientY, targetPath: path, isDir })
     },
     [],
+  )
+
+  /**
+   * 空白处右键:视为在根节点上右键,菜单中的"搜索"作用域为整个工作区。
+   * 其他条目(删除/重命名等)在根路径不在 nodes 表中时会自动 disable。
+   */
+  const handleBlankContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return
+      if (!root) return
+      e.preventDefault()
+      setMenu({ x: e.clientX, y: e.clientY, targetPath: root, isDir: true })
+    },
+    [root],
   )
 
   /**
@@ -587,6 +613,7 @@ function TreeArea() {
             "bg-primary/5 outline outline-2 -outline-offset-2 outline-primary/40",
         )}
         onMouseDown={handleBlankMouseDown}
+        onContextMenu={handleBlankContextMenu}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -597,10 +624,14 @@ function TreeArea() {
         ) : !rootAccessible ? (
           <MissingRoot reason={watchReason} onChoose={handleSelectRoot} />
         ) : (
-          <>
+          <RootNode
+            expanded={rootExpanded}
+            onToggle={() => setRootExpanded((v) => !v)}
+            onContextMenu={handleContextMenu}
+          >
             {rootCreatingIsDir !== null && (
               <InlineNameEditor
-                depth={0}
+                depth={1}
                 initialName=""
                 isDir={rootCreatingIsDir}
                 siblingNames={siblingNamesOf(root)}
@@ -620,7 +651,7 @@ function TreeArea() {
                 <TreeNode
                   key={path}
                   path={path}
-                  depth={0}
+                  depth={1}
                   onContextMenu={handleContextMenu}
                   matcher={matcher}
                   branchHasMatch={branchHasMatch}
@@ -629,7 +660,7 @@ function TreeArea() {
                 />
               ))
             )}
-          </>
+          </RootNode>
         )}
       </div>
 
@@ -638,6 +669,16 @@ function TreeArea() {
           state={menu}
           onClose={() => setMenu(null)}
           onRequestDelete={(paths) => setDeleteTargets(paths)}
+          onRequestSearch={(scope) => {
+            setMenu(null)
+            setSearchScope(scope)
+          }}
+        />
+      )}
+      {searchScope && (
+        <WorkspaceSearchDialog
+          scopePath={searchScope}
+          onClose={() => setSearchScope(null)}
         />
       )}
       <AlertDialog

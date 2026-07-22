@@ -9,6 +9,7 @@ import {
   ListTree,
   Pencil,
   RefreshCw,
+  Search,
   Trash2,
 } from "lucide-react"
 import { useEffect, useMemo } from "react"
@@ -36,6 +37,13 @@ interface WorkspaceContextMenuProps {
   onClose: () => void
   /** 请求宿主发起删除(带确认对话框)。 */
   onRequestDelete: (paths: string[]) => void
+  /**
+   * 请求宿主打开搜索浮层,scopePath 为搜索作用域:
+   * - 在目录上右键:该目录
+   * - 在文件上右键:该文件的父目录
+   * - 在空白/根节点上右键:工作区根目录
+   */
+  onRequestSearch: (scopePath: string) => void
 }
 
 /**
@@ -54,6 +62,7 @@ export function WorkspaceContextMenu({
   state,
   onClose,
   onRequestDelete,
+  onRequestSearch,
 }: WorkspaceContextMenuProps) {
   const root = useWorkspaceStore((s) => s.root)
   const selectedPaths = useWorkspaceStore((s) => s.selectedPaths)
@@ -163,6 +172,22 @@ export function WorkspaceContextMenu({
   }
 
   const canRename = !!nodes[state.targetPath]
+  // 根节点(不在 nodes 中)禁止删除
+  const canDelete = targets.every((p) => !!nodes[p])
+
+  const handleSearch = () => {
+    const node = nodesMap[state.targetPath]
+    let scope: string
+    if (!node) {
+      // 目标不在 nodes 中(通常是根节点或空白处伪造的 root 目标)
+      scope = state.targetPath || root
+    } else if (node.entry.isDir) {
+      scope = state.targetPath
+    } else {
+      scope = node.entry.parent || root
+    }
+    onRequestSearch(scope)
+  }
 
   const handleInsertTree = async () => {
     try {
@@ -310,12 +335,21 @@ export function WorkspaceContextMenu({
           <Pencil className="h-3.5 w-3.5" />
           <span>重命名</span>
         </ContextMenuItem>
-        <ContextMenuItem variant="destructive" onClick={handleDelete}>
+        <ContextMenuItem
+          variant="destructive"
+          disabled={!canDelete}
+          onClick={handleDelete}
+        >
           <Trash2 className="h-3.5 w-3.5" />
           <span>{deleteLabel}</span>
         </ContextMenuItem>
 
         <ContextMenuSeparator />
+
+        <ContextMenuItem onClick={handleSearch}>
+          <Search className="h-3.5 w-3.5" />
+          <span>搜索</span>
+        </ContextMenuItem>
 
         <ContextMenuItem onClick={handleRefresh}>
           <RefreshCw className="h-3.5 w-3.5" />

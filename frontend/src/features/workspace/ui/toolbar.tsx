@@ -1,4 +1,4 @@
-import { FolderCog, History, RefreshCw, Search, X } from "lucide-react"
+import { FolderCog, History } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { DialogService } from "@/../bindings/prompttool/internal/services/dialog"
@@ -40,15 +40,11 @@ interface WorkspaceToolbarProps {
 }
 
 export function WorkspaceToolbar({ renderRecent }: WorkspaceToolbarProps = {}) {
-  const searchQuery = useWorkspaceStore((s) => s.searchQuery)
-  const setSearchQuery = useWorkspaceStore((s) => s.setSearchQuery)
   const setRoot = useWorkspaceStore((s) => s.setRoot)
   const setWatchStatus = useWorkspaceStore((s) => s.setWatchStatus)
   const root = useWorkspaceStore((s) => s.root)
 
-  const [searchOpen, setSearchOpen] = useState(false)
   const [recentOpen, setRecentOpen] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
   const recentPanelRef = useRef<HTMLDivElement>(null)
   const recentBtnRef = useRef<HTMLButtonElement>(null)
 
@@ -64,15 +60,6 @@ export function WorkspaceToolbar({ renderRecent }: WorkspaceToolbarProps = {}) {
     window.addEventListener("mousedown", onDown)
     return () => window.removeEventListener("mousedown", onDown)
   }, [recentOpen])
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await refreshRoot()
-    } finally {
-      setRefreshing(false)
-    }
-  }, [])
 
   const handleChangeRoot = useCallback(async () => {
     let picked: string | undefined
@@ -124,19 +111,6 @@ export function WorkspaceToolbar({ renderRecent }: WorkspaceToolbarProps = {}) {
           {getBaseName(root)}
         </span>
         <div className="flex items-center gap-0.5">
-          <IconButton
-            title="搜索"
-            active={searchOpen}
-            onClick={() => {
-              setSearchOpen((v) => {
-                const next = !v
-                if (!next) setSearchQuery("")
-                return next
-              })
-            }}
-          >
-            <Search className="h-3 w-3" />
-          </IconButton>
           {renderRecent && (
             <IconButton
               title="最近打开"
@@ -147,37 +121,11 @@ export function WorkspaceToolbar({ renderRecent }: WorkspaceToolbarProps = {}) {
               <History className="h-3 w-3" />
             </IconButton>
           )}
-          <IconButton title="刷新根目录" onClick={handleRefresh}>
-            <RefreshCw className={cn("h-3 w-3", refreshing && "animate-spin")} />
-          </IconButton>
           <IconButton title="切换根目录" onClick={handleChangeRoot}>
             <FolderCog className="h-3 w-3" />
           </IconButton>
         </div>
       </div>
-
-      {searchOpen && (
-        <div className="flex items-center gap-1 border-b bg-background px-2 py-1.5">
-          <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <input
-            autoFocus
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="按名称过滤"
-            className="min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/70"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery("")}
-              title="清除"
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      )}
 
       {recentOpen && renderRecent && (
         <div
