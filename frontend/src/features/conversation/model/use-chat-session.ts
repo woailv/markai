@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState } from "react"
 
+import { Events } from "@wailsio/runtime"
+
 import { ConversationService } from "@/../bindings/prompttool/internal/services/conversation"
-import { SnapshotService } from "@/../bindings/prompttool/internal/services/snapshot"
+import type { MessageDTO } from "@/../bindings/prompttool/internal/services/conversation/models"
 
 import { encodeTemplateToken } from "@/shared/rich-editor"
 import { useTemplateStore } from "@/entities/template"
-import {
-  COMMAND_TAG_DETECT_RE,
-  parseCommands,
-  executeCommands,
-  withExecMeta,
-} from "@/entities/exec-command"
 import type { ChatMessage } from "@/entities/message"
 
 import { useConversationStore } from "./conversation.store"
+
+const MESSAGE_UPDATED_EVENT = "conversation:message-updated"
 
 interface Options {
   /** 已落库会话 id。null 表示新会话,首次发送后会通过 onConversationCreated 回填。 */
@@ -25,8 +23,11 @@ interface Options {
 }
 
 /**
- * useChatSession 从原 HomePage 抽出,承载单个 chat tab 的会话数据与操作。
- * 生命周期与 tab 组件绑定:切换 tab 会导致组件 unmount → 状态自然重置。
+ * useChatSession 承载单个 chat tab 的会话数据与操作。
+ *
+ * AI 消息(带指令)不再由前端执行:后端识别、解析、执行,并通过
+ * `conversation:message-updated` 事件把每一阶段(pending/done)的最新 content
+ * 推回来。本 hook 只负责发消息 → 更新本地 messages → 订阅事件合并更新。
  */
 export function useChatSession({
   conversationId,
@@ -35,13 +36,11 @@ export function useChatSession({
 }: Options) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   // 模板列表统一走 useTemplateStore,避免本 hook 维护一份副本。
-  // 之前的实现会在"新建模板"后因本地副本未刷新而导致 composer 模板选择框看不到新模板。
   const templates = useTemplateStore((s) => s.templates)
   const loadTemplatesFromStore = useTemplateStore((s) => s.load)
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<number>>(
     new Set(),
   )
-  // 本 hook 内部维护一个"当前会话 id"镜像,新建会话后会更新。
   const [currentConvId, setCurrentConvId] = useState<number | null>(
     conversationId,
   )
@@ -60,7 +59,6 @@ export function useChatSession({
           new Set(detail.conversation.templateIds || []),
         )
       } else {
-        // 会话已被删除
         setMessages([])
         setSelectedTemplateIds(new Set())
         setCurrentConvId(null)
@@ -69,8 +67,6 @@ export function useChatSession({
     [],
   )
 
-  // 外部 conversationId 变化时(顶栏 Popover 切换会话 / 点击"新建会话"),
-  // 同步内部镜像并加载对应会话的消息;为 null 时重置为空会话。
   useEffect(() => {
     setCurrentConvId(conversationId)
     if (conversationId == null) {
@@ -81,7 +77,6 @@ export function useChatSession({
     }
   }, [conversationId, loadConversation])
 
-  // 模板列表变化时,剔除 selectedTemplateIds 中已被删除的项。
   useEffect(() => {
     setSelectedTemplateIds((prev) => {
       if (prev.size === 0) return prev
@@ -94,77 +89,56 @@ export function useChatSession({
     })
   }, [templates])
 
-  // 初次挂载:确保模板 store 已加载。会话加载由上面的 conversationId 副作用统一处理。
   useEffect(() => {
     void loadTemplatesFromStore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const runCommandPipeline = useCallback(
-    async (content: string, convId: number, sourceMsgId: number) => {
-      const items = parseCommands(content)
-      if (items.length === 0) return
-
-      const batchRes = await SnapshotService.BeginBatch({
-        conversationId: convId,
-        messageId: sourceMsgId,
-      })
-      const batchId = batchRes?.batchId || 0
-
-      const pendingContent = withExecMeta(content, {
-        status: "pending",
-        pending: items.length,
-      })
-      await ConversationService.UpdateMessage({
-        messageId: sourceMsgId,
-        content: pendingContent,
-      })
+  // 订阅后端消息更新事件:只处理归属于当前会话的更新。
+  useEffect(() => {
+    const unsub = Events.On(MESSAGE_UPDATED_EVENT, (evt) => {
+      const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      if (!payload) return
+      const p = payload as { conversationId?: number; message?: MessageDTO }
+      if (!p.message) return
+      if (currentConvId == null || p.conversationId !== currentConvId) return
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === sourceMsgId ? { ...m, content: pendingContent } : m,
+          m.id === p.message!.id
+            ? { ...p.message!, role: p.message!.role as "user" | "assistant" }
+            : m,
         ),
       )
-
-      const report = await executeCommands(items, batchId)
-      report.batchId = batchId
-
-      const finalContent = withExecMeta(content, {
-        status: "done",
-        report,
-      })
-      await ConversationService.UpdateMessage({
-        messageId: sourceMsgId,
-        content: finalContent,
-      })
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === sourceMsgId ? { ...m, content: finalContent } : m,
-        ),
-      )
-    },
-    [],
-  )
+    })
+    return () => {
+      if (typeof unsub === "function") unsub()
+    }
+  }, [currentConvId])
 
   const sendMessage = useCallback(
     async (content: string) => {
-      const isAssistant = COMMAND_TAG_DETECT_RE.test(content)
+      // role 由后端根据 content 判定;前端 payload 只在 user 消息前补模板 token。
+      // 判断"是否为 assistant/命令消息"通过 sentinel/tag 特征都无关紧要,
+      // 因为拼模板只对纯用户输入有用 — 命令类内容不会命中模板前缀。
+      const tokens = templates
+        .filter((t) => selectedTemplateIds.has(t.id))
+        .map((tpl) => encodeTemplateToken(tpl.id, tpl.title))
       let payload = content
-
-      if (!isAssistant) {
-        const tokens = templates
-          .filter((t) => selectedTemplateIds.has(t.id))
-          .map((tpl) => encodeTemplateToken(tpl.id, tpl.title))
-        if (tokens.length > 0) {
-          payload = `${tokens.join(" ")}\n\n${content}`
-        }
+      // 只在正文不含指令标签特征时拼模板前缀(避免污染 AI 编辑消息)。
+      const looksLikeAssistant = /<(?:WRITE_FILE|EDIT_FILE|DELETE_FILE|MOVE_PATH|CREATE_DIRECTORY|REQUEST_DIRECTORY_LIST|REQUEST_FILE)[\s/>]/.test(
+        content,
+      )
+      if (!looksLikeAssistant && tokens.length > 0) {
+        payload = `${tokens.join(" ")}\n\n${content}`
       }
 
       const tempId = `temp-${Date.now()}`
+      // 乐观插入:role 用启发式,后端返回后立刻替换。
       setMessages((prev) => [
         ...prev,
         {
           id: tempId,
-          role: isAssistant ? "assistant" : "user",
+          role: looksLikeAssistant ? "assistant" : "user",
           content: payload,
           createdAt: new Date().toISOString(),
         },
@@ -173,7 +147,7 @@ export function useChatSession({
       try {
         const res = await ConversationService.AppendMessage({
           conversationId: currentConvId || 0,
-          role: isAssistant ? "assistant" : "user",
+          role: "", // 已弃用;后端自行判定
           content: payload,
           batchId: 0,
         })
@@ -187,16 +161,12 @@ export function useChatSession({
               templateIds: Array.from(selectedTemplateIds),
             })
           }
-          // 必须先 await 刷新会话列表,再把新 id 设为激活会话。
-          // 否则 HomePage 的"校正副作用"会因列表尚未包含新会话而把
-          // activeConversationId 立刻重置为 null,导致下次发送又新建一条会话。
           await useConversationStore.getState().load()
           useConversationStore
             .getState()
             .setActiveConversationId(res.conversationId)
           onConversationCreated?.(res.conversationId)
         } else {
-          // 已有会话:列表变化(标题/排序)异步刷新即可
           void useConversationStore.getState().load()
         }
         onConversationsChanged?.()
@@ -212,9 +182,7 @@ export function useChatSession({
           ),
         )
 
-        if (isAssistant) {
-          void runCommandPipeline(payload, res.conversationId, res.message.id)
-        }
+        // 执行结果通过 conversation:message-updated 事件推回,本地无需 poll。
       } catch (err) {
         console.error("Failed to append message", err)
       }
@@ -223,7 +191,6 @@ export function useChatSession({
       currentConvId,
       onConversationCreated,
       onConversationsChanged,
-      runCommandPipeline,
       selectedTemplateIds,
       templates,
     ],
@@ -287,7 +254,6 @@ export function useChatSession({
   )
 
   const refreshTemplates = useCallback(async () => {
-    // 兼容原有 API;实际数据源为 store,直接触发 store.load。
     await useTemplateStore.getState().load()
   }, [])
 

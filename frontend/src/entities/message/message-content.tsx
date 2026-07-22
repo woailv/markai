@@ -1,5 +1,4 @@
 import { RichEditor } from "@/shared/rich-editor"
-import { decodeExecPayload, ExecReportView, ExecStatusView } from "@/entities/exec-command"
 
 interface MessageContentProps {
   content: string
@@ -8,24 +7,14 @@ interface MessageContentProps {
 }
 
 /**
- * 消息气泡内容渲染(仅用于用户消息与老版兼容)。
+ * 消息气泡内容渲染(仅用于用户消息)。
  *
  * AI 消息新展示态由 <AssistantMessage/> 单独负责,不再走这里。
- * 保留 __EXEC_STATUS__ / __EXEC_REPORT__ 独立消息的兼容渲染,
- * 用于老会话历史中残留的独立回执消息。
  */
 export function MessageContent({
   content,
   inverted = false,
 }: MessageContentProps) {
-  const execPayload = decodeExecPayload(content)
-  if (execPayload?.type === "status" && execPayload.status) {
-    return <ExecStatusView pending={execPayload.status.pending} />
-  }
-  if (execPayload?.type === "report" && execPayload.report) {
-    return <ExecReportView report={execPayload.report} />
-  }
-
   return (
     <RichEditor
       value={content}

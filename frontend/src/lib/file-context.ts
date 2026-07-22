@@ -2,7 +2,7 @@ import { FileService } from "@/../bindings/prompttool/internal/services/file"
 import type { FileEntry } from "@/../bindings/prompttool/internal/services/file/models"
 
 import { FILE_TOKEN_REGEX } from "@/shared/rich-editor"
-import { parseCommands } from "@/entities/exec-command"
+import { extractRequestPathsFromMeta } from "@/entities/exec-command"
 
 /**
  * 从一段消息文本中抽取所有文件 token 的绝对路径,按出现顺序去重。
@@ -27,26 +27,12 @@ export function extractFilePathsFromMessages(contents: string[]): string[] {
 /**
  * 从消息文本中抽取 REQUEST_FILE / REQUEST_DIRECTORY_LIST 指令的路径,按出现顺序去重。
  * 用于复制 AI 消息时,将请求的文件/目录内容一并展开为 <files> 上下文。
+ *
+ * 新架构下 AI 指令的解析发生在后端,前端仅从 sentinel 里的 segments 读取。
  */
 export function extractRequestPathsFromMessages(contents: string[]): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const content of contents) {
-    const items = parseCommands(content)
-    for (const item of items) {
-      if (
-        item.kind === "REQUEST_FILE" ||
-        item.kind === "REQUEST_DIRECTORY_LIST"
-      ) {
-        const p = normalizePath(item.path)
-        if (!seen.has(p)) {
-          seen.add(p)
-          result.push(p)
-        }
-      }
-    }
-  }
-  return result
+  const paths = extractRequestPathsFromMeta(contents)
+  return paths.map(normalizePath)
 }
 
 /** 将 URL 形式的正斜杠路径还原为本机路径(Windows 使用反斜杠) */

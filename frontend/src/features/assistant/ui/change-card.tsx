@@ -22,8 +22,7 @@ import { useState, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import { requestOpenFile } from "@/shared/model"
 
-import type { ExecResultBase, ExecStatus } from "@/entities/exec-command"
-import type { ParsedCommand } from "@/entities/exec-command"
+import type { Command, ExecResultBase, ExecStatus } from "@/entities/exec-command"
 import { buildFilesContext } from "@/lib/file-context"
 
 /**
@@ -48,7 +47,7 @@ import { buildFilesContext } from "@/lib/file-context"
 const DEFAULT_PREVIEW_LINES = 12
 
 interface ChangeCardProps {
-  command: ParsedCommand
+  command: Command
   result?: ExecResultBase
   /** 初始是否展开主体。默认按 kind 决定 */
   defaultOpen?: boolean
@@ -77,7 +76,7 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
       // REQUEST_FILE:直接读取该文件
       // REQUEST_DIRECTORY_LIST:递归展开目录下所有文件
       // 两者均通过 buildFilesContext 复用与用户消息一致的 <files> 格式
-      const path = "path" in command ? command.path : ""
+      const path = command.path ?? ""
       if (!path) return
       const ctx = await buildFilesContext([path])
       if (!ctx) return
@@ -129,7 +128,7 @@ export function ChangeCard({ command, result, defaultOpen }: ChangeCardProps) {
 
         <PathDisplay 
           path={primaryPath} 
-          openPath={command.kind === "MOVE_PATH" ? command.destination : ("path" in command ? command.path : undefined)} 
+          openPath={command.kind === "MOVE_PATH" ? command.destination : command.path}
         />
 
         {canCopyAsFiles && (
@@ -183,14 +182,14 @@ function CardBody({
   command,
   result,
 }: {
-  command: ParsedCommand
+  command: Command
   result?: ExecResultBase
 }): ReactNode {
   switch (command.kind) {
     case "WRITE_FILE":
-      return <CodePreview text={command.content} language="" />
+      return <CodePreview text={command.content ?? ""} language="" />
     case "EDIT_FILE":
-      return <EditBlocks edits={command.edits} />
+      return <EditBlocks edits={command.edits ?? []} />
     case "REQUEST_DIRECTORY_LIST":
     case "REQUEST_FILE":
       return (
@@ -403,12 +402,12 @@ function StatusPill({
   )
 }
 
-function commandHasBody(cmd: ParsedCommand, result?: ExecResultBase): boolean {
+function commandHasBody(cmd: Command, result?: ExecResultBase): boolean {
   switch (cmd.kind) {
     case "WRITE_FILE":
-      return cmd.content.length > 0
+      return (cmd.content?.length ?? 0) > 0
     case "EDIT_FILE":
-      return cmd.edits.length > 0
+      return (cmd.edits?.length ?? 0) > 0
     case "REQUEST_DIRECTORY_LIST":
     case "REQUEST_FILE":
       // 结果就绪才有主体
@@ -418,7 +417,7 @@ function commandHasBody(cmd: ParsedCommand, result?: ExecResultBase): boolean {
   }
 }
 
-function defaultOpenFor(kind: ParsedCommand["kind"]): boolean {
+function defaultOpenFor(kind: Command["kind"]): boolean {
   // 用户偏好:默认展开前 N 行(WRITE/EDIT 视为核心信息)
   return (
     kind === "WRITE_FILE" ||
@@ -428,13 +427,11 @@ function defaultOpenFor(kind: ParsedCommand["kind"]): boolean {
   )
 }
 
-function getPrimaryPath(cmd: ParsedCommand): string {
-  switch (cmd.kind) {
-    case "MOVE_PATH":
-      return `${cmd.source} → ${cmd.destination}`
-    default:
-      return cmd.path
+function getPrimaryPath(cmd: Command): string {
+  if (cmd.kind === "MOVE_PATH") {
+    return `${cmd.source ?? ""} → ${cmd.destination ?? ""}`
   }
+  return cmd.path ?? ""
 }
 
 interface KindMeta {
@@ -443,7 +440,7 @@ interface KindMeta {
   badgeClass: string
 }
 
-const KIND_META: Record<ParsedCommand["kind"], KindMeta> = {
+const KIND_META: Record<Command["kind"], KindMeta> = {
   WRITE_FILE: {
     label: "写入",
     icon: FilePlus,

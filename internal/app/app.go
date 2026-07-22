@@ -67,7 +67,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		return nil, fmt.Errorf("app: migrate schema: %w", err)
 	}
 
-	registry, err := services.Registry(database)
+	registry, err := services.Registry(database, logger)
 	if err != nil {
 		if closeErr := database.Close(); closeErr != nil {
 			logger.Error("close db after service init failure", "err", closeErr)
@@ -116,6 +116,10 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 
 	if registry.Recent != nil {
 		registry.Recent.SetEmitter(emitter)
+	}
+
+	if registry.Conversation != nil {
+		registry.Conversation.SetEmitter(emitter)
 	}
 
 	// 先读取持久化的置顶状态,用于构造窗口时应用初始值。

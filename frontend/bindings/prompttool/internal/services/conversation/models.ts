@@ -4,19 +4,16 @@
 /**
  * AppendMessageInput 追加消息入参。
  * 若 ConversationID 为 0,后端会自动创建新会话并返回新 id。
+ * Role 已被弃用:后端根据 content 中是否含指令标签自行判定;字段保留仅为兼容旧调用。
  */
 export interface AppendMessageInput {
     "conversationId": number;
 
     /**
-     * "user" | "assistant"
+     * deprecated
      */
-    "role": string;
+    "role"?: string;
     "content": string;
-
-    /**
-     * 可选:关联的快照批次
-     */
     "batchId": number;
 }
 

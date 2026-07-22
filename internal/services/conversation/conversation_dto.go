@@ -37,11 +37,12 @@ type ConversationDetail struct {
 
 // AppendMessageInput 追加消息入参。
 // 若 ConversationID 为 0,后端会自动创建新会话并返回新 id。
+// Role 已被弃用:后端根据 content 中是否含指令标签自行判定;字段保留仅为兼容旧调用。
 type AppendMessageInput struct {
 	ConversationID uint64 `json:"conversationId"`
-	Role           string `json:"role"` // "user" | "assistant"
+	Role           string `json:"role,omitempty"` // deprecated
 	Content        string `json:"content"`
-	BatchID        uint64 `json:"batchId"` // 可选:关联的快照批次
+	BatchID        uint64 `json:"batchId"`
 }
 
 // AppendMessageResult 追加消息结果。

@@ -2,6 +2,7 @@ package services
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -25,28 +26,31 @@ import (
 // 还额外返回需要在 app 层做生命周期管理的 Service 引用
 // (WorkspaceService, DialogService, RecentService, WindowService, TrayService)。
 type RegistryResult struct {
-	Services  []application.Service
-	Workspace *workspace.WorkspaceService
-	Dialog    *dialog.DialogService
-	Recent    *recent.RecentService
-	Window    *windowstate.WindowService
-	Tray      *tray.TrayService
+	Services     []application.Service
+	Workspace    *workspace.WorkspaceService
+	Dialog       *dialog.DialogService
+	Recent       *recent.RecentService
+	Window       *windowstate.WindowService
+	Tray         *tray.TrayService
+	Conversation *conversation.ConversationService
 }
 
 // Registry 汇总所有暴露给前端的 Service。
 // 新增 Service 时只需在此处 append,main/app 层无需改动。
 // database 参数供需要持久化的 Service 注入使用。
-func Registry(database *db.DB) (*RegistryResult, error) {
+func Registry(database *db.DB, logger *slog.Logger) (*RegistryResult, error) {
 	promptSvc, err := prompt.NewPromptTemplateService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init prompt template: %w", err)
 	}
-	// snapshot 先构造:ConversationService 依赖它做会话级联清理。
+	// snapshot 先构造:FileService / ConversationService 都依赖它。
 	snapshotSvc, err := snapshot.NewSnapshotService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init snapshot: %w", err)
 	}
-	convSvc, err := conversation.NewConversationService(database, snapshotSvc)
+	fileSvc := file.NewFileService(snapshotSvc)
+	// ConversationService 直接持有 FileService 用于 AI 消息执行流水线。
+	convSvc, err := conversation.NewConversationService(database, snapshotSvc, fileSvc, logger)
 	if err != nil {
 		return nil, fmt.Errorf("services: init conversation: %w", err)
 	}
@@ -65,7 +69,7 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 		Services: []application.Service{
 			application.NewService(greet.NewGreetService()),
 			application.NewService(promptSvc),
-			application.NewService(file.NewFileService(snapshotSvc)),
+			application.NewService(fileSvc),
 			application.NewService(convSvc),
 			application.NewService(snapshotSvc),
 			application.NewService(workspaceSvc),
@@ -76,10 +80,11 @@ func Registry(database *db.DB) (*RegistryResult, error) {
 			application.NewService(traySvc),
 			application.NewService(skeleton.NewSkeletonService()),
 		},
-		Workspace: workspaceSvc,
-		Dialog:    dialogSvc,
-		Recent:    recentSvc,
-		Window:    windowSvc,
-		Tray:      traySvc,
+		Workspace:    workspaceSvc,
+		Dialog:        dialogSvc,
+		Recent:        recentSvc,
+		Window:        windowSvc,
+		Tray:          traySvc,
+		Conversation: convSvc,
 	}, nil
 }

@@ -3,12 +3,16 @@ package conversation
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
 
 	"prompttool/internal/db"
+	"prompttool/internal/pkg/eventbus"
+	"prompttool/internal/services/conversation/aiproto"
 	"prompttool/internal/services/snapshot"
 )
 
@@ -18,26 +22,70 @@ const (
 
 	titleFallback = "新会话"
 	titleMaxRunes = 40
+
+	// MessageUpdatedEvent 后端在 AI 消息执行流水线的关键节点广播的事件名。
+	// 前端订阅后合并到本地状态,以呈现 pending → done 的过渡。
+	MessageUpdatedEvent = "conversation:message-updated"
 )
 
-// ConversationService 提供会话与消息的持久化能力。
-// snapshots 用于会话删除/清空时级联清理批次与快照,通过服务边界调用,
-// 避免本包直接操作 snapshot_batches / file_snapshots 表。
+// MessageUpdatedPayload 事件负载:告诉前端某条消息的最新正文。
+type MessageUpdatedPayload struct {
+	ConversationID uint64     `json:"conversationId"`
+	Message        MessageDTO `json:"message"`
+}
+
+// ConversationService 提供会话与消息的持久化能力,并在 AI 消息追加时
+// 编排"解析 → 快照批次 → 执行 → 通过事件推送最新态"的流水线。
 type ConversationService struct {
 	db        *db.DB
 	snapshots *snapshot.SnapshotService
+	executor  *aiproto.Executor
+	logger    *slog.Logger
+
+	mu      sync.RWMutex
+	emitter eventbus.Emitter
 }
 
-// NewConversationService 构造函数。调用方负责保证 database 与 snapshots 非空。
-// 表结构迁移由 app 层集中处理,本构造函数不再执行 AutoMigrate。
-func NewConversationService(database *db.DB, snapshots *snapshot.SnapshotService) (*ConversationService, error) {
+// NewConversationService 构造函数。files/snapshots/logger 均不可为 nil。
+// executor 由本函数根据 files 构造。
+func NewConversationService(
+	database *db.DB,
+	snapshots *snapshot.SnapshotService,
+	files aiproto.FileOps,
+	logger *slog.Logger,
+) (*ConversationService, error) {
 	if database == nil {
 		return nil, errors.New("conversation: nil db")
 	}
 	if snapshots == nil {
 		return nil, errors.New("conversation: nil snapshots service")
 	}
-	return &ConversationService{db: database, snapshots: snapshots}, nil
+	if files == nil {
+		return nil, errors.New("conversation: nil file service")
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &ConversationService{
+		db:        database,
+		snapshots: snapshots,
+		executor:  aiproto.NewExecutor(files),
+		logger:    logger.With("component", "conversation"),
+	}, nil
+}
+
+// SetEmitter 注入事件推送能力。未注入时 AI 消息流水线仍会执行,但不广播事件,
+// 前端只能靠下次拉取才能看到最新态。
+func (s *ConversationService) SetEmitter(e eventbus.Emitter) {
+	s.mu.Lock()
+	s.emitter = e
+	s.mu.Unlock()
+}
+
+func (s *ConversationService) getEmitter() eventbus.Emitter {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.emitter
 }
 
 // ---------- 会话生命周期 ----------
@@ -277,17 +325,27 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 // ---------- 消息操作 ----------
 
 // AppendMessage 向会话末尾追加消息。
+//
 // 若 in.ConversationID == 0,自动创建新会话;标题从首条 user 消息摘要生成。
+//
+// 角色识别:入参 Role 已被忽略,后端根据 content 内是否包含指令标签自行判定
+// (与旧的前端 COMMAND_TAG_DETECT_RE 行为一致)。若判定为 assistant 且包含
+// 至少一条可执行指令,则:
+//  1. 同步开启快照批次并把 pending sentinel 一起写入消息;
+//  2. 启动 goroutine 顺序执行,执行完再写入 done sentinel;
+//  3. 每个关键节点通过 MessageUpdatedEvent 事件广播给前端。
+//
+// 事件负载见 MessageUpdatedPayload。
 func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessageResult, error) {
-	role := strings.TrimSpace(in.Role)
-	if role != roleUser && role != roleAssistant {
-		return nil, fmt.Errorf("conversation: invalid role %q", in.Role)
-	}
-	// 允许 content 为空字符串以承载纯占位/回执,但要过滤 nil 场景由 Go 天然保证。
+	// content 允许为空以承载纯占位。
 
+	role := detectRole(in.Content)
 	var (
 		result     AppendMessageResult
 		createdNew bool
+
+		aiRanges []aiproto.ParseItemWithRange
+		aiBatch  uint64
 	)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
@@ -330,16 +388,50 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			}
 		}
 
+		content := in.Content
+		batchID := in.BatchID
+		// 仅 assistant 且包含可执行指令时才走流水线;pending sentinel 先落库。
+		if role == roleAssistant {
+			ranges := aiproto.ParseCommandsWithRanges(content)
+			if len(ranges) > 0 {
+				// 该事务内先建批次,拿到 batchID 一起写入 pending sentinel。
+				batch := snapshot.SnapshotBatch{
+					ConversationID: convID,
+					CreatedAt:      now,
+				}
+				if err := tx.Create(&batch).Error; err != nil {
+					return fmt.Errorf("conversation: begin batch: %w", err)
+				}
+				batchID = batch.ID
+				aiBatch = batch.ID
+				aiRanges = ranges
+				content = aiproto.WithExecMeta(content, aiproto.ExecMeta{
+					Status:        "pending",
+					BatchID:       batchID,
+					TotalCommands: len(ranges),
+					Segments:      aiproto.BuildSegments(content, ranges, nil),
+				})
+			}
+		}
+
 		msg := Message{
 			ConversationID: convID,
 			Role:           role,
-			Content:        in.Content,
-			BatchID:        in.BatchID,
+			Content:        content,
+			BatchID:        batchID,
 			CreatedAt:      now,
 			UpdatedAt:      now,
 		}
 		if err := tx.Create(&msg).Error; err != nil {
 			return fmt.Errorf("conversation: append message: %w", err)
+		}
+		// 批次事后回填 message_id,以支持后续 SnapshotService.Status 从 batchId 找回 message。
+		if aiBatch != 0 {
+			if err := tx.Model(&snapshot.SnapshotBatch{}).
+				Where("id = ?", aiBatch).
+				Update("message_id", msg.ID).Error; err != nil {
+				return fmt.Errorf("conversation: bind batch: %w", err)
+			}
 		}
 
 		if err := tx.Model(&Conversation{}).
@@ -359,7 +451,96 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 		return nil, err
 	}
 	result.CreatedNew = createdNew
+
+	// 有指令待执行时,在后台完成执行并推事件通知前端刷新。
+	if len(aiRanges) > 0 && result.Message.ID != 0 {
+		go s.runAIPipeline(result.ConversationID, result.Message.ID, in.Content, aiBatch, aiRanges)
+	}
 	return &result, nil
+}
+
+// runAIPipeline 在后台顺序执行 AI 指令,完成后把 done sentinel 写回消息并 emit 事件。
+// 该协程要求 aiRanges 与 batchID 均已就绪(由 AppendMessage 事务内准备)。
+func (s *ConversationService) runAIPipeline(
+	convID uint64,
+	msgID uint64,
+	rawContent string,
+	batchID uint64,
+	ranges []aiproto.ParseItemWithRange,
+) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.logger.Error("AI pipeline panic", "err", r, "messageId", msgID)
+		}
+	}()
+
+	items := make([]aiproto.ParseItem, 0, len(ranges))
+	for _, r := range ranges {
+		items = append(items, r.Item)
+	}
+	report := s.executor.Execute(items, batchID)
+	report.BatchID = batchID
+
+	finalContent := aiproto.WithExecMeta(rawContent, aiproto.ExecMeta{
+		Status:        "done",
+		BatchID:       batchID,
+		TotalCommands: len(ranges),
+		Segments:      aiproto.BuildSegments(rawContent, ranges, &report),
+	})
+
+	dto, err := s.writeMessageContent(msgID, finalContent)
+	if err != nil {
+		s.logger.Error("update message after AI execution", "err", err, "messageId", msgID)
+		return
+	}
+	s.emitMessageUpdated(convID, dto)
+}
+
+// writeMessageContent 只更新消息正文与 updatedAt。用于流水线内部,不复用 UpdateMessage
+// 是为了绕开公开 API 的入参校验并保证返回最新 DTO。
+func (s *ConversationService) writeMessageContent(msgID uint64, content string) (MessageDTO, error) {
+	var out MessageDTO
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var msg Message
+		if err := tx.First(&msg, msgID).Error; err != nil {
+			return err
+		}
+		now := time.Now()
+		msg.Content = content
+		msg.UpdatedAt = now
+		if err := tx.Model(&Message{}).
+			Where("id = ?", msg.ID).
+			Updates(map[string]any{"content": content, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&Conversation{}).
+			Where("id = ?", msg.ConversationID).
+			Update("updated_at", now).Error; err != nil {
+			return err
+		}
+		out = toMessageDTO(msg)
+		return nil
+	})
+	return out, err
+}
+
+func (s *ConversationService) emitMessageUpdated(convID uint64, msg MessageDTO) {
+	e := s.getEmitter()
+	if e == nil {
+		return
+	}
+	e.EmitEvent(MessageUpdatedEvent, MessageUpdatedPayload{
+		ConversationID: convID,
+		Message:        msg,
+	})
+}
+
+// detectRole 判定消息角色。含指令标签 → assistant;否则 → user。
+func detectRole(content string) string {
+	if aiproto.HasCommandTag(content) {
+		return roleAssistant
+	}
+	return roleUser
 }
 
 // UpdateMessage 仅修改消息正文,不重放执行。
