@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo } from "react"
 
 import {
   useChatSession,
@@ -43,10 +43,6 @@ export function HomePage() {
   const openTemplateTab = useTabStore((s) => s.openTemplateTab)
   const updateTitle = useTabStore((s) => s.updateTitle)
   const onTemplateDeleted = useTabStore((s) => s.onTemplateDeleted)
-
-  // 聊天面板全屏状态(非持久化,刷新后还原)
-  const [chatFullscreen, setChatFullscreen] = useState(false)
-  const toggleChatFullscreen = useCallback(() => setChatFullscreen((v) => !v), [])
 
   useEffect(() => {
     void loadConversations()
@@ -153,8 +149,6 @@ export function HomePage() {
       onRenameConversation={renameConversation}
       onTogglePinConversation={setPinnedConversation}
       onClearAllConversations={handleClearAllConversations}
-      fullscreen={chatFullscreen}
-      onToggleFullscreen={toggleChatFullscreen}
     />
   )
 
@@ -162,7 +156,6 @@ export function HomePage() {
     <div className="flex h-svh flex-col overflow-hidden border-t border-border">
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <MainLayout
-          chatFullscreen={chatFullscreen}
           hasTabs={tabs.length > 0}
           chatPanel={
             <ChatPanel
@@ -186,10 +179,7 @@ export function HomePage() {
           }
         />
       </div>
-      <StatusBar
-        chatFullscreen={chatFullscreen}
-        exitChatFullscreen={() => setChatFullscreen(false)}
-      />
+      <StatusBar />
     </div>
   )
 }

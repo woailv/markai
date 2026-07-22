@@ -1,4 +1,4 @@
-import { Maximize2, MessagesSquare, Minimize2, Plus } from "lucide-react"
+import { MessagesSquare, Plus } from "lucide-react"
 
 import type { ConversationSummary } from "@/../bindings/prompttool/internal/services/conversation/models"
 import { cn } from "@/lib/utils"
@@ -16,9 +16,6 @@ interface PanelHeaderProps {
   onRenameConversation: (id: number, newTitle: string) => void
   onTogglePinConversation: (id: number, pinned: boolean) => void
   onClearAllConversations: () => void
-
-  fullscreen?: boolean
-  onToggleFullscreen?: () => void
 }
 
 /**
@@ -35,8 +32,6 @@ export function PanelHeader({
   onRenameConversation,
   onTogglePinConversation,
   onClearAllConversations,
-  fullscreen = false,
-  onToggleFullscreen,
 }: PanelHeaderProps) {
   return (
     <div className="flex h-9 shrink-0 items-center gap-1 border-b bg-muted/30 px-2">
@@ -67,19 +62,6 @@ export function PanelHeader({
         <ToolbarButton title="新建会话" onClick={onNewConversation}>
           <Plus className="h-3.5 w-3.5" />
         </ToolbarButton>
-
-        {onToggleFullscreen && (
-          <ToolbarButton
-            title={fullscreen ? "退出全屏" : "全屏"}
-            onClick={onToggleFullscreen}
-          >
-            {fullscreen ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </ToolbarButton>
-        )}
       </div>
     </div>
   )

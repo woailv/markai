@@ -23,26 +23,13 @@ function useActiveTabSummary(): string {
   return active.title
 }
 
-interface StatusBarProps {
-  /** 会话面板当前是否全屏(由 HomePage 持有,非持久化) */
-  chatFullscreen?: boolean
-  /** 请求退出会话面板全屏 */
-  exitChatFullscreen?: () => void
-}
-
 /**
  * 页面底部状态/工具条。
  * - 左侧:切换工作区目录树显示
  * - 右侧:切换右侧 ChatPanel 显示/隐藏
  * 模板/历史管理已下沉到 ChatPanel 顶栏的 Popover,不再出现于此。
- *
- * 会话区全屏交互:当 ChatPanel 处于全屏时,工作区视觉上已被遮住,此时
- * 点击"工作区"按钮的用户意图始终是"我想看到工作区"—— 因此需要:
- *   1) 退出会话区全屏;
- *   2) 无论工作区当前是否折叠,都强制展开(collapsed = false)。
- * 非全屏场景下保留原有 toggle 行为(点一次折叠 / 再点一次展开)。
  */
-export function StatusBar({ chatFullscreen, exitChatFullscreen }: StatusBarProps = {}) {
+export function StatusBar() {
   const workspaceCollapsed = useWorkspaceStore((s) => s.collapsed)
   const setWorkspaceCollapsed = useWorkspaceStore((s) => s.setCollapsed)
   const chatCollapsed = useRightPanelStore((s) => s.collapsed)
@@ -62,22 +49,8 @@ export function StatusBar({ chatFullscreen, exitChatFullscreen }: StatusBarProps
       <div className="flex min-w-0 items-center gap-1">
         <ToggleButton
           active={!workspaceCollapsed}
-          onClick={() => {
-            // 会话区全屏时:退出全屏 + 强制展开工作区(忽略当前折叠状态)。
-            if (chatFullscreen) {
-              exitChatFullscreen?.()
-              if (workspaceCollapsed) setWorkspaceCollapsed(false)
-              return
-            }
-            setWorkspaceCollapsed(!workspaceCollapsed)
-          }}
-          title={
-            chatFullscreen
-              ? "退出全屏并显示工作区目录"
-              : workspaceCollapsed
-                ? "显示工作区目录"
-                : "隐藏工作区目录"
-          }
+          onClick={() => setWorkspaceCollapsed(!workspaceCollapsed)}
+          title={workspaceCollapsed ? "显示工作区目录" : "隐藏工作区目录"}
         >
           <PanelLeft className="h-3 w-3" />
           <span>工作区</span>

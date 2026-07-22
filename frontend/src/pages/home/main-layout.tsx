@@ -20,7 +20,6 @@ import { RecentList } from "@/widgets/recent-list"
 import { EmptyPlaceholder } from "./empty-placeholder"
 
 interface MainLayoutProps {
-  chatFullscreen: boolean
   chatPanel: React.ReactNode
   hasTabs: boolean
 }
@@ -38,10 +37,8 @@ interface MainLayoutProps {
  *      挤走编辑区。打开文件时中间面板以持久化的 editorWidth 出现,视觉上从
  *      chat 让出空间。
  *
- * 全屏 ChatPanel 时,直接跳过 ResizablePanelGroup,让聊天面板占满主区域。
  */
 export function MainLayout({
-  chatFullscreen,
   chatPanel,
   hasTabs,
 }: MainLayoutProps) {
@@ -73,13 +70,6 @@ export function MainLayout({
     return Math.max(EDITOR_LAYOUT.MIN_WIDTH, w)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasTabs])
-
-  // 全屏模式:仅渲染 ChatPanel,占满整个主区域。
-  if (chatFullscreen && !chatCollapsed) {
-    return (
-      <div className="flex min-h-0 flex-1 overflow-hidden">{chatPanel}</div>
-    )
-  }
 
   // 完全空态:工作区+会话区都收起,且没有打开任何文件。
   if (workspaceCollapsed && chatCollapsed && !hasTabs) {
