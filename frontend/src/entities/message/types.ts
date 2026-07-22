@@ -1,8 +1,12 @@
+import type { MessageFragmentDTO } from "@/../bindings/prompttool/internal/services/conversation/models"
+
 export interface ChatMessage {
   id: number | string
   role: "user" | "assistant"
   content: string
   createdAt: string
+  /** 后端下发的结构化修改片段。仅 AI 消息可能非空。 */
+  fragments?: MessageFragmentDTO[]
 }
 
 /**

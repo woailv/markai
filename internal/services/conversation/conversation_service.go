@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
 
 	"prompttool/internal/db"
-	"prompttool/internal/pkg/eventbus"
 	"prompttool/internal/services/conversation/aiproto"
 	"prompttool/internal/services/snapshot"
 )
@@ -22,36 +20,25 @@ const (
 
 	titleFallback = "新会话"
 	titleMaxRunes = 40
-
-	// MessageUpdatedEvent 后端在 AI 消息执行流水线的关键节点广播的事件名。
-	// 前端订阅后合并到本地状态,以呈现 pending → done 的过渡。
-	MessageUpdatedEvent = "conversation:message-updated"
 )
 
-// MessageUpdatedPayload 事件负载:告诉前端某条消息的最新正文。
-type MessageUpdatedPayload struct {
-	ConversationID uint64     `json:"conversationId"`
-	Message        MessageDTO `json:"message"`
-}
-
-// ConversationService 提供会话与消息的持久化能力,并在 AI 消息追加时
-// 编排"解析 → 快照批次 → 执行 → 通过事件推送最新态"的流水线。
+// ConversationService 提供会话 / 消息 / 消息片段的读写。
+//
+// AI 消息的解析与执行:AppendMessage 里把 AI 消息内的所有指令拆成 MessageFragment
+// 落库,然后异步交给 FragmentService 逐条自动应用,应用结果通过
+// FragmentUpdatedEvent 推送给前端。前端不再自行解析原文,只按 fragments 渲染。
 type ConversationService struct {
 	db        *db.DB
 	snapshots *snapshot.SnapshotService
-	executor  *aiproto.Executor
+	fragments *FragmentService
 	logger    *slog.Logger
-
-	mu      sync.RWMutex
-	emitter eventbus.Emitter
 }
 
-// NewConversationService 构造函数。files/snapshots/logger 均不可为 nil。
-// executor 由本函数根据 files 构造。
+// NewConversationService 构造。所有依赖不可为 nil。
 func NewConversationService(
 	database *db.DB,
 	snapshots *snapshot.SnapshotService,
-	files aiproto.FileOps,
+	fragments *FragmentService,
 	logger *slog.Logger,
 ) (*ConversationService, error) {
 	if database == nil {
@@ -60,8 +47,8 @@ func NewConversationService(
 	if snapshots == nil {
 		return nil, errors.New("conversation: nil snapshots service")
 	}
-	if files == nil {
-		return nil, errors.New("conversation: nil file service")
+	if fragments == nil {
+		return nil, errors.New("conversation: nil fragments service")
 	}
 	if logger == nil {
 		logger = slog.Default()
@@ -69,23 +56,9 @@ func NewConversationService(
 	return &ConversationService{
 		db:        database,
 		snapshots: snapshots,
-		executor:  aiproto.NewExecutor(files),
+		fragments: fragments,
 		logger:    logger.With("component", "conversation"),
 	}, nil
-}
-
-// SetEmitter 注入事件推送能力。未注入时 AI 消息流水线仍会执行,但不广播事件,
-// 前端只能靠下次拉取才能看到最新态。
-func (s *ConversationService) SetEmitter(e eventbus.Emitter) {
-	s.mu.Lock()
-	s.emitter = e
-	s.mu.Unlock()
-}
-
-func (s *ConversationService) getEmitter() eventbus.Emitter {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.emitter
 }
 
 // ---------- 会话生命周期 ----------
@@ -102,7 +75,6 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 		return []ConversationSummary{}, nil
 	}
 
-	// 避免 N+1, 批量获取所有会话的关联模板
 	ids := make([]uint64, 0, len(rows))
 	for _, r := range rows {
 		ids = append(ids, r.ID)
@@ -126,14 +98,14 @@ func (s *ConversationService) List() ([]ConversationSummary, error) {
 		if tpls := tplByConv[r.ID]; tpls != nil {
 			sum.TemplateIDs = tpls
 		} else {
-			sum.TemplateIDs = []uint{} // 保证给前端的是空数组而不是 null
+			sum.TemplateIDs = []uint{}
 		}
 		out = append(out, sum)
 	}
 	return out, nil
 }
 
-// Get 返回会话详情(含消息序列)。
+// Get 返回会话详情。每条消息的 fragments 已按 order_index 排序并附在 DTO 上。
 func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 	if id == 0 {
 		return nil, errors.New("conversation: id required")
@@ -153,7 +125,6 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		return nil, fmt.Errorf("conversation: load messages: %w", err)
 	}
 
-	// 加载会话绑定的模板 ID
 	var links []ConversationTemplate
 	if err := s.db.Where("conversation_id = ?", id).Order("id ASC").Find(&links).Error; err != nil {
 		return nil, fmt.Errorf("conversation: load templates: %w", err)
@@ -163,9 +134,34 @@ func (s *ConversationService) Get(id uint64) (*ConversationDetail, error) {
 		tplIDs = append(tplIDs, l.TemplateID)
 	}
 
+	// 批量取所有 message 的 fragments,避免 N+1。
+	fragsByMsg := map[uint64][]MessageFragmentDTO{}
+	if len(msgs) > 0 {
+		msgIDs := make([]uint64, 0, len(msgs))
+		for _, m := range msgs {
+			msgIDs = append(msgIDs, m.ID)
+		}
+		var frags []MessageFragment
+		if err := s.db.
+			Where("message_id IN ?", msgIDs).
+			Order("message_id ASC, order_index ASC, id ASC").
+			Find(&frags).Error; err != nil {
+			return nil, fmt.Errorf("conversation: load fragments: %w", err)
+		}
+		for _, f := range frags {
+			fragsByMsg[f.MessageID] = append(fragsByMsg[f.MessageID], toFragmentDTO(f))
+		}
+	}
+
 	dtos := make([]MessageDTO, 0, len(msgs))
 	for _, m := range msgs {
-		dtos = append(dtos, toMessageDTO(m))
+		dto := toMessageDTO(m)
+		if fs, ok := fragsByMsg[m.ID]; ok {
+			dto.Fragments = fs
+		} else {
+			dto.Fragments = []MessageFragmentDTO{}
+		}
+		dtos = append(dtos, dto)
 	}
 
 	summary := toConversationSummary(conv)
@@ -221,7 +217,7 @@ func (s *ConversationService) Rename(in RenameConversationInput) error {
 	return nil
 }
 
-// Delete 删除会话及其全部消息与快照批次。
+// Delete 删除会话及其全部消息、片段与快照批次。
 func (s *ConversationService) Delete(id uint64) error {
 	if id == 0 {
 		return errors.New("conversation: id required")
@@ -230,11 +226,23 @@ func (s *ConversationService) Delete(id uint64) error {
 		if err := s.snapshots.DeleteByConversationTx(tx, id); err != nil {
 			return fmt.Errorf("conversation: delete snapshots: %w", err)
 		}
+		// 级联:先取本会话所有 message id,再删片段。
+		var msgIDs []uint64
+		if err := tx.Model(&Message{}).
+			Where("conversation_id = ?", id).
+			Pluck("id", &msgIDs).Error; err != nil {
+			return fmt.Errorf("conversation: list messages: %w", err)
+		}
+		if len(msgIDs) > 0 {
+			if err := tx.Where("message_id IN ?", msgIDs).
+				Delete(&MessageFragment{}).Error; err != nil {
+				return fmt.Errorf("conversation: delete fragments: %w", err)
+			}
+		}
 		if err := tx.Where("conversation_id = ?", id).
 			Delete(&Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete messages: %w", err)
 		}
-		// 级联清理模板关联
 		if err := tx.Where("conversation_id = ?", id).
 			Delete(&ConversationTemplate{}).Error; err != nil {
 			return fmt.Errorf("conversation: delete template links: %w", err)
@@ -246,7 +254,7 @@ func (s *ConversationService) Delete(id uint64) error {
 	})
 }
 
-// ClearMessages 清空消息接口（不删除会话，不影响绑定的模板）
+// ClearMessages 清空消息(不删会话,不影响模板绑定)。
 func (s *ConversationService) ClearMessages(id uint64) error {
 	if id == 0 {
 		return errors.New("conversation: id required")
@@ -255,11 +263,21 @@ func (s *ConversationService) ClearMessages(id uint64) error {
 		if err := s.snapshots.DeleteByConversationTx(tx, id); err != nil {
 			return fmt.Errorf("conversation: clear snapshots: %w", err)
 		}
+		var msgIDs []uint64
+		if err := tx.Model(&Message{}).
+			Where("conversation_id = ?", id).
+			Pluck("id", &msgIDs).Error; err != nil {
+			return fmt.Errorf("conversation: list messages: %w", err)
+		}
+		if len(msgIDs) > 0 {
+			if err := tx.Where("message_id IN ?", msgIDs).
+				Delete(&MessageFragment{}).Error; err != nil {
+				return fmt.Errorf("conversation: clear fragments: %w", err)
+			}
+		}
 		if err := tx.Where("conversation_id = ?", id).Delete(&Message{}).Error; err != nil {
 			return fmt.Errorf("conversation: clear messages: %w", err)
 		}
-
-		// 重置计数
 		if err := tx.Model(&Conversation{}).Where("id = ?", id).
 			Updates(map[string]any{
 				"message_count": 0,
@@ -271,13 +289,12 @@ func (s *ConversationService) ClearMessages(id uint64) error {
 	})
 }
 
-// SetTemplates 覆盖设置会话绑定的模板集合 (前端多选框切换时调用)
+// SetTemplates 覆盖设置会话绑定的模板集合。
 func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 	if in.ConversationID == 0 {
 		return errors.New("conversation: id required")
 	}
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		// 去重处理
 		seen := make(map[uint]struct{}, len(in.TemplateIDs))
 		uniq := make([]uint, 0, len(in.TemplateIDs))
 		for _, tid := range in.TemplateIDs {
@@ -291,13 +308,11 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 			uniq = append(uniq, tid)
 		}
 
-		// 先全量删除旧绑定
 		if err := tx.Where("conversation_id = ?", in.ConversationID).
 			Delete(&ConversationTemplate{}).Error; err != nil {
 			return fmt.Errorf("conversation: clear template links: %w", err)
 		}
 
-		// 重建新绑定
 		if len(uniq) > 0 {
 			now := time.Now()
 			links := make([]ConversationTemplate, 0, len(uniq))
@@ -313,7 +328,6 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 			}
 		}
 
-		// 更新会话 updatedAt
 		if err := tx.Model(&Conversation{}).Where("id = ?", in.ConversationID).
 			Update("updated_at", time.Now()).Error; err != nil {
 			return fmt.Errorf("conversation: bump updated_at: %w", err)
@@ -326,26 +340,15 @@ func (s *ConversationService) SetTemplates(in SetTemplatesInput) error {
 
 // AppendMessage 向会话末尾追加消息。
 //
-// 若 in.ConversationID == 0,自动创建新会话;标题从首条 user 消息摘要生成。
-//
-// 角色识别:入参 Role 已被忽略,后端根据 content 内是否包含指令标签自行判定
-// (与旧的前端 COMMAND_TAG_DETECT_RE 行为一致)。若判定为 assistant 且包含
-// 至少一条可执行指令,则:
-//  1. 同步开启快照批次并把 pending sentinel 一起写入消息;
-//  2. 启动 goroutine 顺序执行,执行完再写入 done sentinel;
-//  3. 每个关键节点通过 MessageUpdatedEvent 事件广播给前端。
-//
-// 事件负载见 MessageUpdatedPayload。
+// 若 in.ConversationID == 0,自动创建新会话。角色识别由后端根据 content 判定,
+// 入参 Role 已被忽略。若判定为 assistant 且含指令,则同事务内把每条指令拆成
+// pending fragment 落库,随后由 FragmentService 异步自动应用并推送状态。
 func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessageResult, error) {
-	// content 允许为空以承载纯占位。
-
 	role := detectRole(in.Content)
 	var (
-		result     AppendMessageResult
-		createdNew bool
-
-		aiRanges []aiproto.ParseItemWithRange
-		aiBatch  uint64
+		result       AppendMessageResult
+		createdNew   bool
+		autoApplyMsg uint64
 	)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
@@ -363,7 +366,6 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			convID = conv.ID
 			createdNew = true
 		} else {
-			// 确认会话存在,并在需要时用首条 user 消息填充自动标题
 			var conv Conversation
 			if err := tx.First(&conv, convID).Error; err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -388,49 +390,31 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 			}
 		}
 
-		content := in.Content
-		batchID := in.BatchID
-		// 仅 assistant 且包含可执行指令时才走流水线;pending sentinel 先落库。
-		if role == roleAssistant {
-			ranges := aiproto.ParseCommandsWithRanges(content)
-			if len(ranges) > 0 {
-				// 该事务内先建批次,拿到 batchID 一起写入 pending sentinel。
-				batch := snapshot.SnapshotBatch{
-					ConversationID: convID,
-					CreatedAt:      now,
-				}
-				if err := tx.Create(&batch).Error; err != nil {
-					return fmt.Errorf("conversation: begin batch: %w", err)
-				}
-				batchID = batch.ID
-				aiBatch = batch.ID
-				aiRanges = ranges
-				content = aiproto.WithExecMeta(content, aiproto.ExecMeta{
-					Status:        "pending",
-					BatchID:       batchID,
-					TotalCommands: len(ranges),
-					Segments:      aiproto.BuildSegments(content, ranges, nil),
-				})
-			}
-		}
-
 		msg := Message{
 			ConversationID: convID,
 			Role:           role,
-			Content:        content,
-			BatchID:        batchID,
+			Content:        in.Content,
+			BatchID:        in.BatchID,
 			CreatedAt:      now,
 			UpdatedAt:      now,
 		}
 		if err := tx.Create(&msg).Error; err != nil {
 			return fmt.Errorf("conversation: append message: %w", err)
 		}
-		// 批次事后回填 message_id,以支持后续 SnapshotService.Status 从 batchId 找回 message。
-		if aiBatch != 0 {
-			if err := tx.Model(&snapshot.SnapshotBatch{}).
-				Where("id = ?", aiBatch).
-				Update("message_id", msg.ID).Error; err != nil {
-				return fmt.Errorf("conversation: bind batch: %w", err)
+
+		// 拆分并落库 fragments;此时 status 均为 pending / parse_error。
+		var fragDTOs []MessageFragmentDTO
+		if role == roleAssistant {
+			frags := BuildFragmentsFromContent(msg.ID, in.Content)
+			if len(frags) > 0 {
+				if err := InsertFragmentsTx(tx, frags); err != nil {
+					return fmt.Errorf("conversation: insert fragments: %w", err)
+				}
+				fragDTOs = make([]MessageFragmentDTO, 0, len(frags))
+				for _, f := range frags {
+					fragDTOs = append(fragDTOs, toFragmentDTO(f))
+				}
+				autoApplyMsg = msg.ID
 			}
 		}
 
@@ -444,7 +428,13 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 		}
 
 		result.ConversationID = convID
-		result.Message = toMessageDTO(msg)
+		dto := toMessageDTO(msg)
+		if fragDTOs == nil {
+			dto.Fragments = []MessageFragmentDTO{}
+		} else {
+			dto.Fragments = fragDTOs
+		}
+		result.Message = dto
 		return nil
 	})
 	if err != nil {
@@ -452,87 +442,11 @@ func (s *ConversationService) AppendMessage(in AppendMessageInput) (*AppendMessa
 	}
 	result.CreatedNew = createdNew
 
-	// 有指令待执行时,在后台完成执行并推事件通知前端刷新。
-	if len(aiRanges) > 0 && result.Message.ID != 0 {
-		go s.runAIPipeline(result.ConversationID, result.Message.ID, in.Content, aiBatch, aiRanges)
+	// AI 消息且已落 fragments:后台自动应用。
+	if autoApplyMsg != 0 {
+		go s.fragments.AutoApplyMessage(result.ConversationID, autoApplyMsg)
 	}
 	return &result, nil
-}
-
-// runAIPipeline 在后台顺序执行 AI 指令,完成后把 done sentinel 写回消息并 emit 事件。
-// 该协程要求 aiRanges 与 batchID 均已就绪(由 AppendMessage 事务内准备)。
-func (s *ConversationService) runAIPipeline(
-	convID uint64,
-	msgID uint64,
-	rawContent string,
-	batchID uint64,
-	ranges []aiproto.ParseItemWithRange,
-) {
-	defer func() {
-		if r := recover(); r != nil {
-			s.logger.Error("AI pipeline panic", "err", r, "messageId", msgID)
-		}
-	}()
-
-	items := make([]aiproto.ParseItem, 0, len(ranges))
-	for _, r := range ranges {
-		items = append(items, r.Item)
-	}
-	report := s.executor.Execute(items, batchID)
-	report.BatchID = batchID
-
-	finalContent := aiproto.WithExecMeta(rawContent, aiproto.ExecMeta{
-		Status:        "done",
-		BatchID:       batchID,
-		TotalCommands: len(ranges),
-		Segments:      aiproto.BuildSegments(rawContent, ranges, &report),
-	})
-
-	dto, err := s.writeMessageContent(msgID, finalContent)
-	if err != nil {
-		s.logger.Error("update message after AI execution", "err", err, "messageId", msgID)
-		return
-	}
-	s.emitMessageUpdated(convID, dto)
-}
-
-// writeMessageContent 只更新消息正文与 updatedAt。用于流水线内部,不复用 UpdateMessage
-// 是为了绕开公开 API 的入参校验并保证返回最新 DTO。
-func (s *ConversationService) writeMessageContent(msgID uint64, content string) (MessageDTO, error) {
-	var out MessageDTO
-	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var msg Message
-		if err := tx.First(&msg, msgID).Error; err != nil {
-			return err
-		}
-		now := time.Now()
-		msg.Content = content
-		msg.UpdatedAt = now
-		if err := tx.Model(&Message{}).
-			Where("id = ?", msg.ID).
-			Updates(map[string]any{"content": content, "updated_at": now}).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&Conversation{}).
-			Where("id = ?", msg.ConversationID).
-			Update("updated_at", now).Error; err != nil {
-			return err
-		}
-		out = toMessageDTO(msg)
-		return nil
-	})
-	return out, err
-}
-
-func (s *ConversationService) emitMessageUpdated(convID uint64, msg MessageDTO) {
-	e := s.getEmitter()
-	if e == nil {
-		return
-	}
-	e.EmitEvent(MessageUpdatedEvent, MessageUpdatedPayload{
-		ConversationID: convID,
-		Message:        msg,
-	})
 }
 
 // detectRole 判定消息角色。含指令标签 → assistant;否则 → user。
@@ -543,7 +457,8 @@ func detectRole(content string) string {
 	return roleUser
 }
 
-// UpdateMessage 仅修改消息正文,不重放执行。
+// UpdateMessage 仅修改消息正文,不重新解析 fragments。
+// 若确实需要重新解析,请单独提供一个"重新拆分"的接口(未来扩展)。
 func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO, error) {
 	if in.MessageID == 0 {
 		return nil, errors.New("conversation: message id required")
@@ -578,8 +493,7 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 	return &dto, nil
 }
 
-// DeleteMessage 删除一条消息;若关联了快照批次,一并删除批次与快照数据。
-// 该操作不会撤销文件修改(文件已落地),仅移除记录。
+// DeleteMessage 删除一条消息,连同其 fragments 与关联的快照批次一起删除。
 func (s *ConversationService) DeleteMessage(id uint64) error {
 	if id == 0 {
 		return errors.New("conversation: message id required")
@@ -596,6 +510,9 @@ func (s *ConversationService) DeleteMessage(id uint64) error {
 			if err := s.snapshots.DeleteBatchTx(tx, msg.BatchID); err != nil {
 				return fmt.Errorf("conversation: delete batch: %w", err)
 			}
+		}
+		if err := tx.Where("message_id = ?", id).Delete(&MessageFragment{}).Error; err != nil {
+			return fmt.Errorf("conversation: delete fragments: %w", err)
 		}
 		if err := tx.Delete(&Message{}, id).Error; err != nil {
 			return fmt.Errorf("conversation: delete message: %w", err)
@@ -640,6 +557,7 @@ func toMessageDTO(m Message) MessageDTO {
 		BatchID:        m.BatchID,
 		CreatedAt:      m.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:      m.UpdatedAt.Format(time.RFC3339),
+		Fragments:      []MessageFragmentDTO{},
 	}
 }
 
@@ -648,7 +566,6 @@ func titleFromContent(role, content string) string {
 	if role != roleUser {
 		return titleFallback
 	}
-	// 取首个非空行,去除 Markdown 常见前缀
 	s := strings.TrimSpace(content)
 	if s == "" {
 		return titleFallback

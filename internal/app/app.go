@@ -56,6 +56,7 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		&conversation.Conversation{},
 		&conversation.Message{},
 		&conversation.ConversationTemplate{},
+		&conversation.MessageFragment{},
 		&snapshot.SnapshotBatch{},
 		&snapshot.FileSnapshot{},
 		&recent.RecentItem{},
@@ -118,8 +119,8 @@ func New(assets fs.FS, logger *slog.Logger) (*App, error) {
 		registry.Recent.SetEmitter(emitter)
 	}
 
-	if registry.Conversation != nil {
-		registry.Conversation.SetEmitter(emitter)
+	if registry.Fragment != nil {
+		registry.Fragment.SetEmitter(emitter)
 	}
 
 	// 先读取持久化的置顶状态,用于构造窗口时应用初始值。

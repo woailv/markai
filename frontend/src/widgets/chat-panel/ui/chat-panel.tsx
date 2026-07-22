@@ -45,7 +45,6 @@ import { cn } from "@/lib/utils"
 
 import { AssistantMessage } from "@/features/assistant"
 import { RichComposer } from "@/features/composer"
-import { stripExecMeta } from "@/entities/exec-command"
 import {
   buildFilesContext,
   extractFilePathsFromMessages,
@@ -590,7 +589,11 @@ function AssistantRow({
               </span>
             </button>
           ) : (
-            <AssistantMessage content={msg.content} />
+            <AssistantMessage
+              messageId={msg.id}
+              content={msg.content}
+              fragments={msg.fragments}
+            />
           )}
 
           {!editing && typeof msg.id === "number" && (
@@ -652,7 +655,7 @@ function useMessageActions(
   const AUTO_COLLAPSE_LINES = 12
   const AUTO_COLLAPSE_CHARS = 800
 
-  const plainContent = stripExecMeta(msg.content)
+  const plainContent = msg.content
   const lineCount = plainContent.split("\n").length
   const charCount = plainContent.length
   const shouldAutoCollapse =
@@ -686,7 +689,7 @@ function useMessageActions(
   const handleCopy = async () => {
     try {
       const isUser = msg.role === "user"
-      const body = stripExecMeta(msg.content)
+      const body = msg.content
 
       let finalText: string
       if (isUser) {
@@ -702,7 +705,7 @@ function useMessageActions(
             ? `${prefixes.join("\n\n")}\n\n${header}`
             : header
       } else {
-        const requestPaths = extractRequestPathsFromMessages([body])
+        const requestPaths = extractRequestPathsFromMessages([msg])
         finalText = await buildFilesContext(requestPaths)
       }
 

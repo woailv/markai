@@ -1,19 +1,14 @@
-export type {
-  Command,
-  CommandKind,
-  SearchReplaceBlock,
-  ExecSegment,
-  ExecMeta,
-} from "./sentinel"
+/**
+ * exec-command 屏障重新导出:
+ * - 片段类型与助手来自后端 bindings(MessageFragmentDTO);
+ * - 只保留少量与批次撤销相关的视图/hook。
+ */
+export type { MessageFragmentDTO } from "@/../bindings/prompttool/internal/services/conversation/models"
 export {
-  decodeExecMeta,
-  stripExecMeta,
-  extractRequestPathsFromMeta,
-  hasExecMeta,
-} from "./sentinel"
-
-export type { ExecStatus, ExecResultBase, ExecutionReport } from "./types"
-
-export { ExecStatusView, ExecReportView } from "./report-view"
+  isApplyableStatus,
+  isModifyingKind,
+  isReadOnlyKind,
+  extractRequestPathsFromFragments,
+} from "./fragment-utils"
 
 export { useBatchStatus } from "./use-batch-status"

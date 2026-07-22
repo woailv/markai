@@ -19,14 +19,17 @@ type SetPinnedInput struct {
 }
 
 // MessageDTO 单条消息的传输结构。
+// Fragments 只在 AI 消息里非空:每条 AI 消息可拆出零至多个修改片段,
+// 前端按此渲染卡片、驱动应用/编辑/忽略等操作。
 type MessageDTO struct {
-	ID             uint64 `json:"id"`
-	ConversationID uint64 `json:"conversationId"`
-	Role           string `json:"role"`
-	Content        string `json:"content"`
-	BatchID        uint64 `json:"batchId"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
+	ID             uint64               `json:"id"`
+	ConversationID uint64               `json:"conversationId"`
+	Role           string               `json:"role"`
+	Content        string               `json:"content"`
+	BatchID        uint64               `json:"batchId"`
+	CreatedAt      string               `json:"createdAt"`
+	UpdatedAt      string               `json:"updatedAt"`
+	Fragments      []MessageFragmentDTO `json:"fragments"`
 }
 
 // ConversationDetail 会话详情:包含元数据 + 消息序列。

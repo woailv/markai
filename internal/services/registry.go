@@ -33,6 +33,7 @@ type RegistryResult struct {
 	Window       *windowstate.WindowService
 	Tray         *tray.TrayService
 	Conversation *conversation.ConversationService
+	Fragment     *conversation.FragmentService
 }
 
 // Registry 汇总所有暴露给前端的 Service。
@@ -43,14 +44,17 @@ func Registry(database *db.DB, logger *slog.Logger) (*RegistryResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("services: init prompt template: %w", err)
 	}
-	// snapshot 先构造:FileService / ConversationService 都依赖它。
+	// snapshot 先构造:FileService / FragmentService 都依赖它。
 	snapshotSvc, err := snapshot.NewSnapshotService(database)
 	if err != nil {
 		return nil, fmt.Errorf("services: init snapshot: %w", err)
 	}
 	fileSvc := file.NewFileService(snapshotSvc)
-	// ConversationService 直接持有 FileService 用于 AI 消息执行流水线。
-	convSvc, err := conversation.NewConversationService(database, snapshotSvc, fileSvc, logger)
+	fragmentSvc, err := conversation.NewFragmentService(database, fileSvc, snapshotSvc, logger)
+	if err != nil {
+		return nil, fmt.Errorf("services: init fragment: %w", err)
+	}
+	convSvc, err := conversation.NewConversationService(database, snapshotSvc, fragmentSvc, logger)
 	if err != nil {
 		return nil, fmt.Errorf("services: init conversation: %w", err)
 	}
@@ -71,6 +75,7 @@ func Registry(database *db.DB, logger *slog.Logger) (*RegistryResult, error) {
 			application.NewService(promptSvc),
 			application.NewService(fileSvc),
 			application.NewService(convSvc),
+			application.NewService(fragmentSvc),
 			application.NewService(snapshotSvc),
 			application.NewService(workspaceSvc),
 			application.NewService(dialogSvc),
@@ -81,10 +86,11 @@ func Registry(database *db.DB, logger *slog.Logger) (*RegistryResult, error) {
 			application.NewService(skeleton.NewSkeletonService()),
 		},
 		Workspace:    workspaceSvc,
-		Dialog:        dialogSvc,
-		Recent:        recentSvc,
-		Window:        windowSvc,
-		Tray:          traySvc,
+		Dialog:       dialogSvc,
+		Recent:       recentSvc,
+		Window:       windowSvc,
+		Tray:         traySvc,
 		Conversation: convSvc,
+		Fragment:     fragmentSvc,
 	}, nil
 }

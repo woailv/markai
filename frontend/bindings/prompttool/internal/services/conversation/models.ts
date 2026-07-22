@@ -31,6 +31,22 @@ export interface AppendMessageResult {
 }
 
 /**
+ * ApplyFragmentsInput 批量应用入参。若 FragmentIDs 为空,则对该消息所有
+ * 可应用(pending / match_failed)的片段依次执行。
+ */
+export interface ApplyFragmentsInput {
+    "messageId": number;
+    "fragmentIds"?: number[] | null;
+}
+
+/**
+ * ApplyFragmentsResult 返回本次触发后所有相关 fragment 的最新态,以便前端一次性合并。
+ */
+export interface ApplyFragmentsResult {
+    "fragments": MessageFragmentDTO[] | null;
+}
+
+/**
  * ConversationDetail 会话详情:包含元数据 + 消息序列。
  */
 export interface ConversationDetail {
@@ -62,6 +78,8 @@ export interface ConversationSummary {
 
 /**
  * MessageDTO 单条消息的传输结构。
+ * Fragments 只在 AI 消息里非空:每条 AI 消息可拆出零至多个修改片段,
+ * 前端按此渲染卡片、驱动应用/编辑/忽略等操作。
  */
 export interface MessageDTO {
     "id": number;
@@ -69,6 +87,29 @@ export interface MessageDTO {
     "role": string;
     "content": string;
     "batchId": number;
+    "createdAt": string;
+    "updatedAt": string;
+    "fragments": MessageFragmentDTO[] | null;
+}
+
+/**
+ * MessageFragmentDTO 单个修改片段的传输结构。
+ */
+export interface MessageFragmentDTO {
+    "id": number;
+    "messageId": number;
+    "orderIndex": number;
+    "kind": string;
+    "path": string;
+    "destination": string;
+    "rawStart": number;
+    "rawEnd": number;
+    "blockIndex": number;
+    "before": string;
+    "after": string;
+    "status": string;
+    "matchReason": string;
+    "appliedAt"?: string;
     "createdAt": string;
     "updatedAt": string;
 }
@@ -79,6 +120,18 @@ export interface MessageDTO {
 export interface RenameConversationInput {
     "conversationId": number;
     "title": string;
+}
+
+/**
+ * SetFragmentStatusInput 设置片段状态,当前仅支持 ignored / pending 两态切换。
+ */
+export interface SetFragmentStatusInput {
+    "fragmentId": number;
+
+    /**
+     * "ignored" | "pending"
+     */
+    "status": string;
 }
 
 /**
@@ -95,6 +148,19 @@ export interface SetPinnedInput {
 export interface SetTemplatesInput {
     "conversationId": number;
     "templateIds": number[] | null;
+}
+
+/**
+ * UpdateFragmentInput 修改片段的编辑内容/目标位置入参。
+ * 未设置的字段(nil 或空)不被覆盖。为了保持简单,这里区分"未提供"用零值 + 字段:
+ * 使用指针可以避免歧义。
+ */
+export interface UpdateFragmentInput {
+    "fragmentId": number;
+    "path"?: string | null;
+    "destination"?: string | null;
+    "before"?: string | null;
+    "after"?: string | null;
 }
 
 /**

@@ -1,8 +1,9 @@
 import { FileService } from "@/../bindings/prompttool/internal/services/file"
 import type { FileEntry } from "@/../bindings/prompttool/internal/services/file/models"
+import type { MessageFragmentDTO } from "@/../bindings/prompttool/internal/services/conversation/models"
 
 import { FILE_TOKEN_REGEX } from "@/shared/rich-editor"
-import { extractRequestPathsFromMeta } from "@/entities/exec-command"
+import { extractRequestPathsFromFragments } from "@/entities/exec-command"
 
 /**
  * 从一段消息文本中抽取所有文件 token 的绝对路径,按出现顺序去重。
@@ -25,13 +26,15 @@ export function extractFilePathsFromMessages(contents: string[]): string[] {
 }
 
 /**
- * 从消息文本中抽取 REQUEST_FILE / REQUEST_DIRECTORY_LIST 指令的路径,按出现顺序去重。
- * 用于复制 AI 消息时,将请求的文件/目录内容一并展开为 <files> 上下文。
+ * 从消息里抽取 REQUEST_FILE / REQUEST_DIRECTORY_LIST 的路径,按出现顺序去重。
+ * 用于复制 AI 消息时,将 AI 想看的资源展开成 <files> 上下文。
  *
- * 新架构下 AI 指令的解析发生在后端,前端仅从 sentinel 里的 segments 读取。
+ * 新架构下 AI 指令由后端解析并落成 fragments,前端从每条消息的 fragments 里读取即可。
  */
-export function extractRequestPathsFromMessages(contents: string[]): string[] {
-  const paths = extractRequestPathsFromMeta(contents)
+export function extractRequestPathsFromMessages(
+  messages: Array<{ fragments?: MessageFragmentDTO[] | null }>,
+): string[] {
+  const paths = extractRequestPathsFromFragments(messages)
   return paths.map(normalizePath)
 }
 
