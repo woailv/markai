@@ -85,7 +85,6 @@ export interface MessageDTO {
     "id": number;
     "conversationId": number;
     "role": string;
-    "content": string;
     "batchId": number;
     "createdAt": string;
     "updatedAt": string;
