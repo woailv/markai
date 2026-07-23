@@ -2,8 +2,6 @@ import { Events } from "@wailsio/runtime"
 import {
   Bot,
   Check,
-  ChevronDown,
-  ChevronRight,
   Copy,
   FileDown,
   MessagesSquare,
@@ -407,6 +405,10 @@ function UserBubble({
     autoCollapse: true,
   })
 
+  const canEdit = !!onEdit && typeof msg.id === "number"
+  const canDelete = !!onDelete && typeof msg.id === "number"
+  const isLong = lineCount > 12 || plainContent.length > 800
+
   // 圆角策略:根据分组位置动态调整右上/右下角
   // 独立单条:! isGrouped && ! isGroupedNext -> 仅右上收紧
   // 分组首条:! isGrouped &&   isGroupedNext -> 右上收紧 + 右下收紧
@@ -465,24 +467,93 @@ function UserBubble({
               onExpand={() => setCollapsed(false)}
             />
           ) : (
-            <MessageContent content={plainContent} />
-          )}
-
-          {!editing && typeof msg.id === "number" && (
-            <MessageActionBar
-              side="right"
-              copied={copied}
-              collapsed={collapsed}
-              onCopy={handleCopy}
-              onToggleCollapse={() => setCollapsed((v) => !v)}
-              onStartEdit={handleStartEdit}
-              onDelete={() => onDelete && onDelete(msg.id as number)}
-              canEdit={!!onEdit}
-            />
+            <>
+              <MessageContent content={plainContent} />
+              {isLong && (
+                <div className="mt-1 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setCollapsed(true)}
+                    className={cn(
+                      "relative z-10 rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[11px] text-foreground/80",
+                      "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground",
+                    )}
+                  >
+                    收起
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
+        {/* 消息下方工具栏:与 AI 消息保持一致布局占位,显隐时不引起抖动 */}
+        {!editing && (canEdit || canDelete) && (
+          <UserMessageToolbar
+            copied={copied}
+            onCopy={handleCopy}
+            onStartEdit={canEdit ? handleStartEdit : undefined}
+            onDelete={
+              canDelete ? () => onDelete && onDelete(msg.id as number) : undefined
+            }
+          />
+        )}
         <TimeLabel createdAt={msg.createdAt} />
       </div>
+    </div>
+  )
+}
+
+/**
+ * 用户消息下方工具栏。
+ *
+ * 反抖动策略:始终占位渲染(min-h 保留高度),仅通过 opacity 控制显隐,
+ * 与 AI 消息 hover 工具栏行为一致——避免因元素挂载/卸载导致的布局跳动。
+ */
+function UserMessageToolbar({
+  copied,
+  onCopy,
+  onStartEdit,
+  onDelete,
+}: {
+  copied: boolean
+  onCopy: () => void
+  onStartEdit?: () => void
+  onDelete?: () => void
+}) {
+  return (
+    <div className="flex min-h-[26px] flex-wrap items-center justify-end gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        onClick={onCopy}
+        title={copied ? "已复制" : "复制消息"}
+        className="flex h-6 w-6 items-center justify-center rounded-md border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-emerald-500" />
+        ) : (
+          <Copy className="h-3 w-3" />
+        )}
+      </button>
+      {onStartEdit && (
+        <button
+          type="button"
+          onClick={onStartEdit}
+          title="编辑消息"
+          className="flex h-6 w-6 items-center justify-center rounded-md border bg-background text-muted-foreground shadow-sm hover:bg-muted hover:text-foreground"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          type="button"
+          onClick={onDelete}
+          title="删除消息"
+          className="flex h-6 w-6 items-center justify-center rounded-md border bg-background text-muted-foreground shadow-sm hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      )}
     </div>
   )
 }
@@ -774,12 +845,22 @@ function useMessageActions(
   }
 
   const handleSave = () => {
+    // editContent 是 RichEditor 的 JSON document 字符串,需要还原为纯文本
+    // 再与原文比较、提交,否则 trim() 比对总是失败,且落库的是 JSON 而非用户可读文本。
+    const nextPlain = (() => {
+      try {
+        const v = documentToPlainText(editContent)
+        return typeof v === "string" ? v : String(v ?? "")
+      } catch {
+        return editContent
+      }
+    })()
     if (
-      editContent.trim() !== plainContent.trim() &&
+      nextPlain.trim() !== plainContent.trim() &&
       onEdit &&
       typeof msg.id === "number"
     ) {
-      onEdit(msg.id, editContent)
+      onEdit(msg.id, nextPlain)
     }
     setEditing(false)
   }
@@ -805,89 +886,6 @@ function useMessageActions(
     },
     setEditing,
   }
-}
-
-function MessageActionBar({
-  side,
-  copied,
-  collapsed,
-  onCopy,
-  onToggleCollapse,
-  onStartEdit,
-  onDelete,
-  canEdit,
-}: {
-  side: "left" | "right"
-  copied: boolean
-  collapsed: boolean
-  onCopy: () => void
-  onToggleCollapse: () => void
-  onStartEdit: () => void
-  onDelete: () => void
-  canEdit: boolean
-}) {
-  return (
-    <div
-      className={cn(
-        "absolute bottom-0 -mb-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100",
-        side === "right" ? "right-full mr-2" : "left-full ml-2",
-      )}
-    >
-      <ActionButton title={copied ? "已复制" : "复制消息"} onClick={onCopy}>
-        {copied ? (
-          <Check className="h-3 w-3 text-emerald-500" />
-        ) : (
-          <Copy className="h-3 w-3" />
-        )}
-      </ActionButton>
-      <ActionButton
-        title={collapsed ? "展开消息" : "收起消息"}
-        onClick={onToggleCollapse}
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3" />
-        ) : (
-          <ChevronDown className="h-3 w-3" />
-        )}
-      </ActionButton>
-      {canEdit && (
-        <ActionButton title="编辑消息" onClick={onStartEdit}>
-          <Pencil className="h-3 w-3" />
-        </ActionButton>
-      )}
-      <ActionButton title="删除消息" onClick={onDelete} destructive>
-        <Trash2 className="h-3 w-3" />
-      </ActionButton>
-    </div>
-  )
-}
-
-function ActionButton({
-  title,
-  onClick,
-  destructive,
-  children,
-}: {
-  title: string
-  onClick: () => void
-  destructive?: boolean
-  children: React.ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cn(
-        "flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground",
-        destructive
-          ? "hover:bg-destructive/10 hover:text-destructive"
-          : "hover:bg-muted hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
-  )
 }
 
 function TimeLabel({ createdAt }: { createdAt: string }) {
