@@ -11,3 +11,4 @@ build/android/overlay.json
 build/android/gen/
 .idea
 /demo/
+/.qoder/
