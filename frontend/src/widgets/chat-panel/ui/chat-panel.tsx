@@ -441,7 +441,7 @@ function UserBubble({
         <User className="h-3.5 w-3.5" />
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col items-end gap-1 pl-32">
+      <div className="flex min-w-0 flex-1 flex-col items-end gap-1">
         <div
           className={cn(
             "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
@@ -666,7 +666,7 @@ function AssistantRow({
         <Bot className="h-3.5 w-3.5" />
       </div>
 
-      <div className="min-w-0 flex-1 pr-32">
+      <div className="min-w-0 flex-1">
         <div className="border-l-2 border-border/50 pl-3">
           <AssistantMessage
             messageId={msg.id}
