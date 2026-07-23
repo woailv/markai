@@ -276,14 +276,21 @@ export function RichComposer({
           }
         }
       } else {
-        // 无坐标(右键菜单等主动触发):优先用焦点判定;
-        // 若只有一个输入框存在,交给它作为兜底。
+        // 无坐标(右键菜单等主动触发):
+        //  1) 优先按焦点判定,但只承认焦点在"composer 角色"目标中的情况;
+        //     若焦点位于工作区面板(它也是 file-drop-target,但只处理带坐标的事件),
+        //     则不能让工作区赢下这一轮,否则右键"添加到输入框"会无人处理。
+        //  2) 焦点不在任何 composer 中时,把所有 composer 角色的目标视为候选,
+        //     若唯一则交给它作为兜底 —— 这正是右键菜单场景的通路。
+        const composerTargets = allTargets.filter(
+          (t) => t.getAttribute("data-file-drop-role") === "composer",
+        )
         const focused = document.activeElement
         if (focused instanceof HTMLElement) {
-          winner = allTargets.find((t) => t.contains(focused)) ?? null
+          winner = composerTargets.find((t) => t.contains(focused)) ?? null
         }
-        if (!winner && allTargets.length === 1 && allTargets[0] === root) {
-          winner = root
+        if (!winner && composerTargets.length === 1) {
+          winner = composerTargets[0]
         }
       }
 
@@ -316,6 +323,7 @@ export function RichComposer({
     <div
       ref={rootRef}
       data-file-drop-target="true"
+      data-file-drop-role="composer"
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
