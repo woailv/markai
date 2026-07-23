@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Events } from "@wailsio/runtime"
 
@@ -43,6 +43,22 @@ export function useChatSession({
   const [currentConvId, setCurrentConvId] = useState<number | null>(
     conversationId,
   )
+  // 缓冲那些消息尚未落到本地 state 时先到达的 fragment 事件,
+  // 待 AppendMessage 返回、消息进入 state 后再回放,避免更新丢失。
+  const pendingFragmentsRef = useRef<Map<number, MessageFragmentDTO[]>>(
+    new Map(),
+  )
+
+  const drainPendingFragments = useCallback((msgId: number) => {
+    const buf = pendingFragmentsRef.current.get(msgId)
+    if (!buf || buf.length === 0) return
+    pendingFragmentsRef.current.delete(msgId)
+    setMessages((prev) => {
+      let next = prev
+      for (const f of buf) next = mergeFragment(next, f)
+      return next
+    })
+  }, [])
 
   const loadConversation = useCallback(
     async (id: number) => {
@@ -94,6 +110,7 @@ export function useChatSession({
   useEffect(() => {
     const unsub = Events.On(FRAGMENT_UPDATED_EVENT, (evt) => {
       const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
+      console.log('FRAGMENT_UPDATED_EVENT on', payload)
       if (!payload) return
       const p = payload as {
         conversationId?: number
@@ -101,7 +118,19 @@ export function useChatSession({
       }
       if (!p.fragment) return
       if (currentConvId == null || p.conversationId !== currentConvId) return
-      setMessages((prev) => mergeFragment(prev, p.fragment!))
+      const frag = p.fragment
+      setMessages((prev) => {
+        // 消息尚未在本地(AppendMessage 回包更慢),先缓冲,稍后回放。
+        if (!prev.some((m) => m.id === frag.messageId)) {
+          const buf = pendingFragmentsRef.current.get(frag.messageId) ?? []
+          const idx = buf.findIndex((f) => f.id === frag.id)
+          if (idx === -1) buf.push(frag)
+          else buf[idx] = frag
+          pendingFragmentsRef.current.set(frag.messageId, buf)
+          return prev
+        }
+        return mergeFragment(prev, frag)
+      })
     })
     return () => {
       if (typeof unsub === "function") unsub()
@@ -181,12 +210,15 @@ export function useChatSession({
         setMessages((prev) =>
           prev.map((m) => (m.id === tempId ? normalizeMessage(res.message) : m)),
         )
+        // 回放:AppendMessage 返回前先到达的 fragment 更新此时可以合并了。
+        drainPendingFragments(res.message.id)
       } catch (err) {
         console.error("Failed to append message", err)
       }
     },
     [
       currentConvId,
+      drainPendingFragments,
       onConversationCreated,
       onConversationsChanged,
       selectedTemplateIds,
