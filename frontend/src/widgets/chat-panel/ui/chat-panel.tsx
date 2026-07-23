@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FileDown,
   MessagesSquare,
   Pencil,
   Trash2,
@@ -536,8 +537,6 @@ function AssistantRow({
   msg,
   isGrouped,
   onDelete,
-  onEdit,
-  templates,
 }: {
   msg: ChatMessage
   isGrouped: boolean
@@ -545,23 +544,37 @@ function AssistantRow({
   onEdit?: (id: number, newContent: string) => void
   templates: Template[]
 }) {
-  const plainContent = useMemo(
-    () => fragmentsToPlainText(msg.fragments),
+  const [viewMode, setViewMode] = useState<"all" | "commands">("all")
+  const [reading, setReading] = useState(false)
+  const [readCopied, setReadCopied] = useState(false)
+
+  const readPathCount = useMemo(
+    () => extractRequestPathsFromMessages([msg]).length,
+    [msg],
+  )
+
+  const hasAnyCommand = useMemo(
+    () => (msg.fragments ?? []).some((f) => f.kind !== "TEXT"),
     [msg.fragments],
   )
-  const {
-    editing,
-    editContent,
-    setEditContent,
-    copied,
-    collapsed,
-    collapsedPreview,
-    setCollapsed,
-    handleCopy,
-    handleSave,
-    handleCancelEdit,
-    handleStartEdit,
-  } = useMessageActions(msg, plainContent, templates, onEdit)
+
+  const handleReadRequests = async () => {
+    if (reading || readPathCount === 0) return
+    setReading(true)
+    try {
+      const paths = extractRequestPathsFromMessages([msg])
+      const ctx = await buildFilesContext(paths)
+      if (ctx) {
+        await navigator.clipboard.writeText(ctx)
+        setReadCopied(true)
+        window.setTimeout(() => setReadCopied(false), 1200)
+      }
+    } catch (err) {
+      console.error("[chat-panel] read requests failed", err)
+    } finally {
+      setReading(false)
+    }
+  }
 
   return (
     <div
@@ -583,67 +596,69 @@ function AssistantRow({
       </div>
 
       <div className="min-w-0 flex-1 pr-32">
-        <div className="relative border-l-2 border-border/50 pl-3">
-          {editing ? (
-            <MessageEditor
-              value={editContent}
-              onChange={setEditContent}
-              onSave={handleSave}
-              onCancel={handleCancelEdit}
-            />
-          ) : collapsed ? (
-            <button
-              type="button"
-              onClick={() => setCollapsed(false)}
-              title="点击展开"
-              className="flex w-full items-center gap-1.5 py-1 text-left text-[12.5px] italic text-muted-foreground hover:text-foreground"
-            >
-              <ChevronRight className="h-3 w-3 shrink-0" />
-              <span className="truncate">
-                {collapsedPreview || "(空消息)"}
-              </span>
-            </button>
-          ) : (
-            <AssistantMessage
-              messageId={msg.id}
-              fragments={msg.fragments}
-            />
-          )}
+        <div className="border-l-2 border-border/50 pl-3">
+          <AssistantMessage
+            messageId={msg.id}
+            fragments={msg.fragments}
+            viewMode={viewMode}
+          />
 
-          {!editing && typeof msg.id === "number" && (
-            <div className="absolute bottom-0 -mb-2 left-full ml-2 flex items-center gap-0.5 rounded-md border bg-background p-0.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-              <ActionButton
-                title={copied ? "已复制" : "复制消息"}
-                onClick={handleCopy}
-              >
-                {copied ? (
-                  <Check className="h-3 w-3 text-emerald-500" />
-                ) : (
-                  <Copy className="h-3 w-3" />
-                )}
-              </ActionButton>
-              <ActionButton
-                title={collapsed ? "展开消息" : "收起消息"}
-                onClick={() => setCollapsed((v) => !v)}
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-3 w-3" />
-                ) : (
-                  <ChevronDown className="h-3 w-3" />
-                )}
-              </ActionButton>
-              {onEdit && (
-                <ActionButton title="编辑消息" onClick={handleStartEdit}>
-                  <Pencil className="h-3 w-3" />
-                </ActionButton>
+          {typeof msg.id === "number" && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+              {hasAnyCommand && (
+                <div
+                  role="tablist"
+                  aria-label="展示模式"
+                  className="flex items-center overflow-hidden rounded-md border bg-background text-[10.5px]"
+                >
+                  <ViewModeTab
+                    active={viewMode === "all"}
+                    onClick={() => setViewMode("all")}
+                    label="全部内容"
+                  />
+                  <ViewModeTab
+                    active={viewMode === "commands"}
+                    onClick={() => setViewMode("commands")}
+                    label="仅指令"
+                  />
+                </div>
               )}
-              <ActionButton
-                title="删除消息"
-                onClick={() => onDelete && onDelete(msg.id as number)}
-                destructive
-              >
-                <Trash2 className="h-3 w-3" />
-              </ActionButton>
+              {readPathCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleReadRequests}
+                  disabled={reading}
+                  title="读取所有 读文件 / 列目录 指令的实际内容并复制到剪贴板"
+                  className={cn(
+                    "flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[10.5px] text-foreground/80 shadow-sm",
+                    "hover:bg-muted hover:text-foreground",
+                    "disabled:cursor-not-allowed disabled:opacity-60",
+                  )}
+                >
+                  {readCopied ? (
+                    <Check className="h-3 w-3 text-emerald-500" />
+                  ) : (
+                    <FileDown className="h-3 w-3" />
+                  )}
+                  <span>
+                    {readCopied
+                      ? "已复制"
+                      : reading
+                        ? "读取中…"
+                        : `读取指令 ${readPathCount} 项`}
+                  </span>
+                </button>
+              )}
+              <div className="ml-auto flex items-center">
+                <button
+                  type="button"
+                  onClick={() => onDelete && onDelete(msg.id as number)}
+                  title="删除消息"
+                  className="flex h-6 w-6 items-center justify-center rounded-md border bg-background text-muted-foreground shadow-sm hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -652,6 +667,33 @@ function AssistantRow({
         </div>
       </div>
     </div>
+  )
+}
+
+function ViewModeTab({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean
+  onClick: () => void
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        "px-2 py-1 transition-colors",
+        active
+          ? "bg-muted font-medium text-foreground"
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
   )
 }
 

@@ -15,6 +15,12 @@ interface AssistantMessageProps {
   /** 消息 id 用来驱动"全部应用"。前端持有的 temp-id 会是字符串,那种情况忽略按钮。 */
   messageId?: number | string
   fragments?: MessageFragmentDTO[]
+  /**
+   * 展示模式:
+   *  - "all"      : 完整渲染 TEXT + 指令片段(默认)
+   *  - "commands" : 只渲染指令片段,过滤掉 TEXT 段落
+   */
+  viewMode?: "all" | "commands"
 }
 
 /**
@@ -28,15 +34,30 @@ interface AssistantMessageProps {
 export function AssistantMessage({
                                    messageId,
                                    fragments,
+                                   viewMode = "all",
                                  }: AssistantMessageProps) {
   const frags = fragments ?? []
-  const segments = useMemo(() => buildSegments(frags), [frags])
+  const allSegments = useMemo(() => buildSegments(frags), [frags])
+  const segments = useMemo(
+      () =>
+          viewMode === "commands"
+              ? allSegments.filter((s) => s.type === "group")
+              : allSegments,
+      [allSegments, viewMode],
+  )
   const actionableFrags = useMemo(
       () => frags.filter((f) => f.kind !== "TEXT"),
       [frags],
   )
 
   if (segments.length === 0) {
+    if (viewMode === "commands") {
+      return (
+          <div className="min-w-0 max-w-none py-1 text-[11.5px] italic text-muted-foreground">
+            此消息不包含任何指令片段。
+          </div>
+      )
+    }
     return <div className="min-w-0 max-w-none" />
   }
 
