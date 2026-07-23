@@ -459,13 +459,19 @@ func detectRole(content string) string {
 	return roleUser
 }
 
-// UpdateMessage 仅修改消息正文,不重新解析 fragments。
-// 若确实需要重新解析,请单独提供一个"重新拆分"的接口(未来扩展)。
+// UpdateMessage 修改消息正文,并按新内容重建 fragments。
+//
+// 旧 fragments 会被删除,随后用 BuildFragmentsFromContent 重新解析新内容并落库,
+// 保证前端按 fragments 渲染时看到的是最新文本。返回的 DTO 携带重建后的 fragments。
+// 注意:重建后的指令片段均为 pending,不会自动应用(避免编辑触发意外的文件写入)。
 func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO, error) {
 	if in.MessageID == 0 {
 		return nil, errors.New("conversation: message id required")
 	}
-	var msg Message
+	var (
+		msg      Message
+		fragDTOs []MessageFragmentDTO
+	)
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&msg, in.MessageID).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -481,6 +487,21 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 			Updates(map[string]any{"content": in.Content, "updated_at": now}).Error; err != nil {
 			return fmt.Errorf("conversation: update message: %w", err)
 		}
+		// 删除旧 fragments,再按新内容重建,逻辑与 AppendMessage 保持一致。
+		if err := tx.Where("message_id = ?", msg.ID).Delete(&MessageFragment{}).Error; err != nil {
+			return fmt.Errorf("conversation: delete old fragments: %w", err)
+		}
+		fragDTOs = []MessageFragmentDTO{}
+		frags := BuildFragmentsFromContent(msg.ID, in.Content)
+		if len(frags) > 0 {
+			if err := InsertFragmentsTx(tx, frags); err != nil {
+				return fmt.Errorf("conversation: insert fragments: %w", err)
+			}
+			fragDTOs = make([]MessageFragmentDTO, 0, len(frags))
+			for _, f := range frags {
+				fragDTOs = append(fragDTOs, toFragmentDTO(f))
+			}
+		}
 		if err := tx.Model(&Conversation{}).
 			Where("id = ?", msg.ConversationID).
 			Update("updated_at", now).Error; err != nil {
@@ -492,6 +513,7 @@ func (s *ConversationService) UpdateMessage(in UpdateMessageInput) (*MessageDTO,
 		return nil, err
 	}
 	dto := toMessageDTO(msg)
+	dto.Fragments = fragDTOs
 	return &dto, nil
 }
 

@@ -86,8 +86,11 @@ export function SetTemplates($in: $models.SetTemplatesInput): $CancellablePromis
 }
 
 /**
- * UpdateMessage 仅修改消息正文,不重新解析 fragments。
- * 若确实需要重新解析,请单独提供一个"重新拆分"的接口(未来扩展)。
+ * UpdateMessage 修改消息正文,并按新内容重建 fragments。
+ * 
+ * 旧 fragments 会被删除,随后用 BuildFragmentsFromContent 重新解析新内容并落库,
+ * 保证前端按 fragments 渲染时看到的是最新文本。返回的 DTO 携带重建后的 fragments。
+ * 注意:重建后的指令片段均为 pending,不会自动应用(避免编辑触发意外的文件写入)。
  */
 export function UpdateMessage($in: $models.UpdateMessageInput): $CancellablePromise<$models.MessageDTO | null> {
     return $Call.ByID(1944277168, $in);
