@@ -9,6 +9,7 @@ export {
   isModifyingKind,
   isReadOnlyKind,
   extractRequestPathsFromFragments,
+  extractRequestPathsByKindFromFragments,
 } from "./fragment-utils"
 
 export { useBatchStatus } from "./use-batch-status"

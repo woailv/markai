@@ -3,7 +3,10 @@ import type { FileEntry } from "@/../bindings/prompttool/internal/services/file/
 import type { MessageFragmentDTO } from "@/../bindings/prompttool/internal/services/conversation/models"
 
 import { FILE_TOKEN_REGEX } from "@/shared/rich-editor"
-import { extractRequestPathsFromFragments } from "@/entities/exec-command"
+import {
+  extractRequestPathsFromFragments,
+  extractRequestPathsByKindFromFragments,
+} from "@/entities/exec-command"
 
 /**
  * 从一段消息文本中抽取所有文件 token 的绝对路径,按出现顺序去重。
@@ -36,6 +39,21 @@ export function extractRequestPathsFromMessages(
 ): string[] {
   const paths = extractRequestPathsFromFragments(messages)
   return paths.map(normalizePath)
+}
+
+/**
+ * 与 extractRequestPathsFromMessages 一致,但按 kind 拆成两组返回,
+ * 便于对 REQUEST_FILE(展开文件内容)与 REQUEST_DIRECTORY_LIST(仅列路径)
+ * 走两条不同的组装流程。
+ */
+export function extractRequestPathsByKindFromMessages(
+  messages: Array<{ fragments?: MessageFragmentDTO[] | null }>,
+): { files: string[]; dirs: string[] } {
+  const { files, dirs } = extractRequestPathsByKindFromFragments(messages)
+  return {
+    files: files.map(normalizePath),
+    dirs: dirs.map(normalizePath),
+  }
 }
 
 /** 将 URL 形式的正斜杠路径还原为本机路径(Windows 使用反斜杠) */
@@ -219,4 +237,69 @@ function pickFence(content: string): string {
     if (m[0].length > max) max = m[0].length
   }
   return "`".repeat(Math.max(3, max + 1))
+}
+
+/**
+ * 递归收集目录下所有文件的绝对路径(不含目录自身),深度不限。
+ * 与 collectPath 不同:此处只登记路径,不读取文件内容。
+ * 单个条目失败不会中断整体流程,失败信息会以注释形式追加。
+ */
+async function listAllFilePaths(
+  dir: string,
+  visited: Set<string>,
+  out: string[],
+  errors: string[],
+): Promise<void> {
+  if (visited.has(dir)) return
+  visited.add(dir)
+  try {
+    const entries = (await FileService.List(dir)) ?? []
+    for (const entry of entries) {
+      if (entry.isDir) {
+        await listAllFilePaths(entry.path, visited, out, errors)
+      } else {
+        if (!visited.has(entry.path)) {
+          visited.add(entry.path)
+          out.push(entry.path)
+        }
+      }
+    }
+  } catch (err) {
+    errors.push(
+      `// [无法列出目录 ${dir}: ${(err as Error)?.message ?? "unknown error"}]`,
+    )
+  }
+}
+
+/**
+ * 将 REQUEST_DIRECTORY_LIST 请求的目录展开为路径列表上下文:
+ * <file_paths>
+ *   <dir path="/abs/dir">
+ *     /abs/dir/a.ts
+ *     /abs/dir/sub/b.ts
+ *   </dir>
+ *   ...
+ * </file_paths>
+ * 无有效目录或全部为空时返回空字符串。
+ */
+export async function buildDirectoryListingsContext(
+  dirs: string[],
+): Promise<string> {
+  if (dirs.length === 0) return ""
+  const sections: string[] = []
+  for (const d of dirs) {
+    const visited = new Set<string>()
+    const paths: string[] = []
+    const errors: string[] = []
+    await listAllFilePaths(d, visited, paths, errors)
+    const bodyLines = [...paths, ...errors]
+    if (bodyLines.length === 0) {
+      sections.push(`  <dir path="${d}">\n  </dir>`)
+      continue
+    }
+    const indented = bodyLines.map((l) => `    ${l}`).join("\n")
+    sections.push(`  <dir path="${d}">\n${indented}\n  </dir>`)
+  }
+  if (sections.length === 0) return ""
+  return `<file_paths>\n${sections.join("\n")}\n</file_paths>`
 }

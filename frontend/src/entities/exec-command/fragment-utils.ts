@@ -44,3 +44,34 @@ export function extractRequestPathsFromFragments(
   }
   return out
 }
+
+/**
+ * 与 extractRequestPathsFromFragments 一致,但按 kind 分组返回:
+ * - files: 来自 REQUEST_FILE 的路径,用 <files> 展开
+ * - dirs:  来自 REQUEST_DIRECTORY_LIST 的路径,用目录路径列表标签展开
+ * 两组内部各自按出现顺序去重;跨组同路径互不影响。
+ */
+export function extractRequestPathsByKindFromFragments(
+  messages: Array<{ fragments?: MessageFragmentDTO[] | null }>,
+): { files: string[]; dirs: string[] } {
+  const fileSeen = new Set<string>()
+  const dirSeen = new Set<string>()
+  const files: string[] = []
+  const dirs: string[] = []
+  for (const m of messages) {
+    for (const f of m.fragments ?? []) {
+      const p = f.path
+      if (!p) continue
+      if (f.kind === "REQUEST_FILE") {
+        if (fileSeen.has(p)) continue
+        fileSeen.add(p)
+        files.push(p)
+      } else if (f.kind === "REQUEST_DIRECTORY_LIST") {
+        if (dirSeen.has(p)) continue
+        dirSeen.add(p)
+        dirs.push(p)
+      }
+    }
+  }
+  return { files, dirs }
+}

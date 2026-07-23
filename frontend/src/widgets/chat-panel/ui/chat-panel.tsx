@@ -46,8 +46,10 @@ import { cn } from "@/lib/utils"
 import { AssistantMessage } from "@/features/assistant"
 import { RichComposer } from "@/features/composer"
 import {
+  buildDirectoryListingsContext,
   buildFilesContext,
   extractFilePathsFromMessages,
+  extractRequestPathsByKindFromMessages,
   extractRequestPathsFromMessages,
 } from "@/lib/file-context"
 import { buildTemplatesContext } from "@/lib/template-context"
@@ -633,10 +635,14 @@ function AssistantRow({
     if (reading || readPathCount === 0) return
     setReading(true)
     try {
-      const paths = extractRequestPathsFromMessages([msg])
-      const ctx = await buildFilesContext(paths)
-      if (ctx) {
-        await navigator.clipboard.writeText(ctx)
+      const { files, dirs } = extractRequestPathsByKindFromMessages([msg])
+      const [filesCtx, dirsCtx] = await Promise.all([
+        buildFilesContext(files),
+        buildDirectoryListingsContext(dirs),
+      ])
+      const combined = [filesCtx, dirsCtx].filter((s) => s.length > 0).join("\n\n")
+      if (combined) {
+        await navigator.clipboard.writeText(combined)
         setReadCopied(true)
         window.setTimeout(() => setReadCopied(false), 1200)
       }
@@ -832,8 +838,12 @@ function useMessageActions(
             ? `${prefixes.join("\n\n")}\n\n${header}`
             : header
       } else {
-        const requestPaths = extractRequestPathsFromMessages([msg])
-        finalText = await buildFilesContext(requestPaths)
+        const { files, dirs } = extractRequestPathsByKindFromMessages([msg])
+        const [filesCtx, dirsCtx] = await Promise.all([
+          buildFilesContext(files),
+          buildDirectoryListingsContext(dirs),
+        ])
+        finalText = [filesCtx, dirsCtx].filter((s) => s.length > 0).join("\n\n")
       }
 
       await navigator.clipboard.writeText(finalText)
