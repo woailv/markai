@@ -14,3 +14,5 @@ export { onOpenFileRequest, requestOpenFile } from "./open-file-request"
 
 export { useLayoutStore } from "./layout.store"
 export type { LayoutStore } from "./layout.store"
+
+export { hasDroppableFiles, resolveFileDropTarget } from "./drop-target"

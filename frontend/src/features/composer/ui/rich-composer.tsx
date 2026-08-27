@@ -54,6 +54,8 @@ import {
   documentToPlainText,
 } from "@/shared/rich-editor"
 import { cn } from "@/lib/utils"
+import { FILE_DROP_ROLE } from "@/shared/config"
+import { hasDroppableFiles, resolveFileDropTarget } from "@/shared/model"
 import { useComposeSettingsStore } from "../model/compose-settings.store"
 import { useDraftStore } from "../model/draft.store"
 
@@ -69,17 +71,6 @@ import type { Template } from "@/entities/template"
  * 工作区拖出条目携带的自定义 MIME(与 features/workspace 保持一致)。
  * 输入框需要识别它才能在"应用内拖拽"时也呈现落点视觉反馈。
  */
-const INTERNAL_WORKSPACE_MIME = "application/x-workspace-paths"
-
-/** 判断 DataTransfer 是否携带可插入到输入框的载荷(外部文件或工作区路径) */
-function hasDroppableFiles(dt: DataTransfer | null | undefined): boolean {
-  if (!dt) return false
-  const types = dt.types
-  if (!types) return false
-  const arr = Array.from(types)
-  return arr.includes("Files") || arr.includes(INTERNAL_WORKSPACE_MIME)
-}
-
 interface RichComposerProps {
   onSend: (plain: string) => void
   placeholder?: string
@@ -250,9 +241,9 @@ export function RichComposer({
       const root = rootRef.current
       if (!root) return
 
-      // 全局唯一目标选择:扫描页面上所有拖放目标(data-file-drop-target),
-      // 依次尝试:落点命中 → 唯一目标;若无坐标则用当前聚焦的目标。
-      // 只有当选中的目标 === 本输入框时才处理,否则让位给对应的 MessageEditor。
+      // 全局唯一目标选择:扫描页面上所有拖放目标(data-file-drop-target)。
+      // 有坐标时统一走 resolveFileDropTarget(取嵌套最深命中);无坐标时用焦点判定。
+      // 命中自身或命中消息区域(代理到输入框)才处理,否则让位给对应的 MessageEditor。
       const hasCoords =
         payload.hasCoords &&
         payload.x !== undefined &&
@@ -265,16 +256,9 @@ export function RichComposer({
       let winner: HTMLElement | null = null
 
       if (hasCoords) {
-        // 有坐标(拖放场景):严格按落点判定,未命中即放弃 —— 与外部文件
-        // 拖入输入框的行为保持一致,不能因为"只有一个输入框"就误插。
-        const stack = document.elementsFromPoint(payload.x, payload.y)
-        for (const el of stack) {
-          const t = allTargets.find((tgt) => tgt.contains(el))
-          if (t) {
-            winner = t
-            break
-          }
-        }
+        // 有坐标(拖放场景):统一走最具体(嵌套最深)的目标判定 ——
+        // 拾取消息编辑器 / 会话消息区域 / 本输入框中真正命中的一个。
+        winner = resolveFileDropTarget(payload.x, payload.y)
       } else {
         // 无坐标(右键菜单等主动触发):
         //  1) 优先按焦点判定,但只承认焦点在"composer 角色"目标中的情况;
@@ -294,10 +278,17 @@ export function RichComposer({
         }
       }
 
-      if (winner !== root) return
+      const isSelf = winner === root
+      // 命中会话消息区域:把它视为输入框的"代理落点",
+      // 无论位置几何,都把文件追加到输入框光标处。
+      const isMessageAreaProxy =
+        winner?.getAttribute("data-file-drop-role") === FILE_DROP_ROLE.messageArea
+      if (!isSelf && !isMessageAreaProxy) return
 
       clearDragState()
-      if (hasCoords) {
+      if (isMessageAreaProxy) {
+        handle.insertFilesAtCursor(payload.paths)
+      } else if (hasCoords) {
         handle.insertFilesAtCoords(payload.paths, payload.x, payload.y)
       } else {
         handle.insertFilesAtCursor(payload.paths)

@@ -42,6 +42,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { cn } from "@/lib/utils"
+import { FILE_DROP_ROLE } from "@/shared/config"
+import { hasDroppableFiles, resolveFileDropTarget } from "@/shared/model"
 
 import { AssistantMessage } from "@/features/assistant"
 import { RichComposer } from "@/features/composer"
@@ -95,6 +97,41 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
+
+  // 会话消息区域作为输入框的"代理落点"的拖拽视觉反馈。
+  // 命中后真实插入由 RichComposer 的 files:dropped 处理器完成;这里只负责
+  // 高亮提示 + 计数器处理 enter/leave 的经典缺陷。
+  const [isAreaDragOver, setIsAreaDragOver] = useState(false)
+  const areaDragCounterRef = useRef(0)
+
+  const handleAreaDragEnter = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasDroppableFiles(e.dataTransfer)) return
+    areaDragCounterRef.current += 1
+    if (!isAreaDragOver) setIsAreaDragOver(true)
+  }
+
+  const handleAreaDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (hasDroppableFiles(e.dataTransfer)) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = "copy"
+      if (!isAreaDragOver) setIsAreaDragOver(true)
+    }
+  }
+
+  const handleAreaDragLeave = (e: ReactDragEvent<HTMLDivElement>) => {
+    if (!hasDroppableFiles(e.dataTransfer)) return
+    areaDragCounterRef.current = Math.max(0, areaDragCounterRef.current - 1)
+    if (areaDragCounterRef.current === 0) setIsAreaDragOver(false)
+  }
+
+  const handleAreaDrop = (e: ReactDragEvent<HTMLDivElement>) => {
+    areaDragCounterRef.current = 0
+    setIsAreaDragOver(false)
+    if (hasDroppableFiles(e.dataTransfer)) {
+      // 阻止默认行为,真实插入交给 Wails files:dropped → RichComposer 代理处理
+      e.preventDefault()
+    }
+  }
 
   // 用户手动上滚时,暂停自动跟随;回到底部区间(阈值 32px)时恢复
   useEffect(() => {
@@ -190,70 +227,88 @@ export function ChatPanel({
   return (
     <section className="flex h-full min-w-0 flex-1 flex-col bg-background">
       {header}
-      <ChatAreaContextMenu
-        messages={messages}
-        templates={templates}
-        onClear={onClear}
-      >
-        <div
-          ref={scrollRef}
-          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-6"
+      {/* 包裹层:承载全局遮罩,覆盖会话区 + 输入框区域 */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <ChatAreaContextMenu
+          messages={messages}
+          templates={templates}
+          onClear={onClear}
         >
-          <div className="w-full">
-            {messages.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="flex flex-col">
-                {messages.map((msg, idx) => {
-                  const prev = messages[idx - 1]
-                  const next = messages[idx + 1]
-                  const isGrouped = prev?.role === msg.role
-                  const isGroupedNext = next?.role === msg.role
-                  if (msg.role === "assistant") {
+          <div
+            ref={scrollRef}
+            data-file-drop-target="true"
+            data-file-drop-role={FILE_DROP_ROLE.messageArea}
+            onDragEnter={handleAreaDragEnter}
+            onDragOver={handleAreaDragOver}
+            onDragLeave={handleAreaDragLeave}
+            onDrop={handleAreaDrop}
+            className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-6"
+          >
+            <div className="w-full">
+              {messages.length === 0 ? (
+                <EmptyState />
+              ) : (
+                <div className="flex flex-col">
+                  {messages.map((msg, idx) => {
+                    const prev = messages[idx - 1]
+                    const next = messages[idx + 1]
+                    const isGrouped = prev?.role === msg.role
+                    const isGroupedNext = next?.role === msg.role
+                    if (msg.role === "assistant") {
+                      return (
+                        <AssistantRow
+                          key={msg.id}
+                          msg={msg}
+                          isGrouped={isGrouped}
+                          onDelete={onDeleteMessage}
+                          onEdit={onEditMessage}
+                          templates={templates}
+                        />
+                      )
+                    }
                     return (
-                      <AssistantRow
+                      <UserBubble
                         key={msg.id}
                         msg={msg}
                         isGrouped={isGrouped}
+                        isGroupedNext={isGroupedNext}
                         onDelete={onDeleteMessage}
                         onEdit={onEditMessage}
                         templates={templates}
                       />
                     )
-                  }
-                  return (
-                    <UserBubble
-                      key={msg.id}
-                      msg={msg}
-                      isGrouped={isGrouped}
-                      isGroupedNext={isGroupedNext}
-                      onDelete={onDeleteMessage}
-                      onEdit={onEditMessage}
-                      templates={templates}
-                    />
-                  )
-                  // (rows derive plain text from msg.fragments internally)
-                })}
-              </div>
-            )}
+                    // (rows derive plain text from msg.fragments internally)
+                  })}
+                </div>
+              )}
+            </div>
           </div>
+        </ChatAreaContextMenu>
+
+        {/* Zed 风格无边输入区:外层不加水平 padding,让 RichComposer 顶部分隔线
+            能与左右两侧的垂直分割线无缝相接;水平留白由 RichComposer 内部承担 */}
+        <div className="shrink-0 pt-0 pb-2">
+          <RichComposer
+            onSend={onSend}
+            templates={templates}
+            selectedTemplateIds={selectedTemplateIds}
+            onToggleTemplate={onToggleTemplate}
+            onCreateTemplate={onCreateTemplate}
+            onEditTemplate={onEditTemplate}
+            onDeleteTemplate={onDeleteTemplate}
+          />
         </div>
-      </ChatAreaContextMenu>
 
-      {/* Zed 风格无边输入区:外层不加水平 padding,让 RichComposer 顶部分隔线
-          能与左右两侧的垂直分割线无缝相接;水平留白由 RichComposer 内部承担 */}
-      <div className="shrink-0 pb-2 pt-0">
-        <RichComposer
-          onSend={onSend}
-          templates={templates}
-          selectedTemplateIds={selectedTemplateIds}
-          onToggleTemplate={onToggleTemplate}
-          onCreateTemplate={onCreateTemplate}
-          onEditTemplate={onEditTemplate}
-          onDeleteTemplate={onDeleteTemplate}
-        />
+        {/* 全局遮罩:覆盖会话区 + 输入框区域 */}
+        {isAreaDragOver && (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-primary/10 backdrop-blur-[1px]">
+            <div className="flex items-center gap-2 rounded-xl border border-primary/40 bg-background px-5 py-3 text-sm font-medium text-foreground shadow-xl">
+              <FileDown className="h-4 w-4 text-primary" />
+              释放文件以添加到输入框
+            </div>
+          </div>
+        )}
       </div>
-
     </section>
   )
 }
@@ -288,7 +343,7 @@ function ChatAreaContextMenu({
       const conversation = messages
         .map(
           (m) =>
-            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${plainOf(m)}`,
+            `**${m.role === "user" ? "User" : "Assistant"}**:\n\n${plainOf(m)}`
         )
         .join("\n\n---\n\n")
 
@@ -298,7 +353,7 @@ function ChatAreaContextMenu({
       const templatesContext = buildTemplatesContext(contents, templates)
 
       const prefixes = [templatesContext, filesContext].filter(
-        (s) => s.length > 0,
+        (s) => s.length > 0
       )
       let finalText =
         prefixes.length > 0
@@ -343,10 +398,7 @@ function ChatAreaContextMenu({
         </ContextMenuContent>
       </ContextMenu>
 
-      <AlertDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-      >
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>清空会话</AlertDialogTitle>
@@ -361,7 +413,7 @@ function ChatAreaContextMenu({
                 onClear()
                 setConfirmOpen(false)
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="text-destructive-foreground bg-destructive hover:bg-destructive/90"
             >
               清空
             </AlertDialogAction>
@@ -389,7 +441,7 @@ function UserBubble({
 }) {
   const plainContent = useMemo(
     () => fragmentsToPlainText(msg.fragments),
-    [msg.fragments],
+    [msg.fragments]
   )
   const {
     editing,
@@ -416,16 +468,13 @@ function UserBubble({
   // 分组首条:! isGrouped &&   isGroupedNext -> 右上收紧 + 右下收紧
   // 分组中间:  isGrouped &&   isGroupedNext -> 右上收紧 + 右下收紧
   // 分组末条:  isGrouped && ! isGroupedNext -> 仅右上收紧
-  const cornerClass = cn(
-    "rounded-tr-md",
-    isGroupedNext && "rounded-br-md",
-  )
+  const cornerClass = cn("rounded-tr-md", isGroupedNext && "rounded-br-md")
 
   return (
     <div
       className={cn(
         "group flex flex-row-reverse gap-2.5",
-        isGrouped ? "mt-1" : "mt-5 first:mt-0",
+        isGrouped ? "mt-1" : "mt-5 first:mt-0"
       )}
     >
       <div
@@ -435,8 +484,8 @@ function UserBubble({
             ? "invisible"
             : cn(
                 "bg-primary/10 text-primary ring-1 ring-primary/20",
-                "dark:bg-primary/15 dark:text-primary-foreground/90",
-              ),
+                "dark:bg-primary/15 dark:text-primary-foreground/90"
+              )
         )}
         aria-hidden={isGrouped}
       >
@@ -446,13 +495,13 @@ function UserBubble({
       <div className="flex min-w-0 flex-1 flex-col items-end gap-1">
         <div
           className={cn(
-            "relative min-w-0 max-w-full break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed",
+            "relative max-w-full min-w-0 rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed break-words",
             // tinted 背景 + 极轻微上到下渐变(顶部略亮,底部略暗,差异 < 5%)
-            "bg-primary/10 dark:bg-primary/15 text-foreground",
+            "bg-primary/10 text-foreground dark:bg-primary/15",
             "bg-gradient-to-b from-primary/[0.13] to-primary/[0.09]",
             "dark:from-primary/[0.18] dark:to-primary/[0.14]",
             "ring-1 ring-primary/20",
-            cornerClass,
+            cornerClass
           )}
         >
           {editing ? (
@@ -478,7 +527,7 @@ function UserBubble({
                     onClick={() => setCollapsed(true)}
                     className={cn(
                       "relative z-10 rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[11px] text-foreground/80",
-                      "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground",
+                      "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
                     )}
                   >
                     收起
@@ -495,7 +544,9 @@ function UserBubble({
             onCopy={handleCopy}
             onStartEdit={canEdit ? handleStartEdit : undefined}
             onDelete={
-              canDelete ? () => onDelete && onDelete(msg.id as number) : undefined
+              canDelete
+                ? () => onDelete && onDelete(msg.id as number)
+                : undefined
             }
           />
         )}
@@ -586,7 +637,7 @@ function UserBubbleCollapsed({
         className={cn(
           "pointer-events-none absolute inset-x-0 bottom-0 h-10",
           "bg-gradient-to-t from-primary/10 to-transparent",
-          "dark:from-primary/15",
+          "dark:from-primary/15"
         )}
       />
       {/* 展开按钮 */}
@@ -596,7 +647,7 @@ function UserBubbleCollapsed({
           onClick={onExpand}
           className={cn(
             "relative z-10 rounded-full border border-primary/25 bg-background/70 px-2 py-0.5 text-[11px] text-foreground/80",
-            "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground",
+            "backdrop-blur-sm transition-colors hover:bg-background hover:text-foreground"
           )}
         >
           展开全文 · {lineCount} 行
@@ -623,12 +674,12 @@ function AssistantRow({
 
   const readPathCount = useMemo(
     () => extractRequestPathsFromMessages([msg]).length,
-    [msg],
+    [msg]
   )
 
   const hasAnyCommand = useMemo(
     () => (msg.fragments ?? []).some((f) => f.kind !== "TEXT"),
-    [msg.fragments],
+    [msg.fragments]
   )
 
   const handleReadRequests = async () => {
@@ -640,7 +691,9 @@ function AssistantRow({
         buildFilesContext(files),
         buildDirectoryListingsContext(dirs),
       ])
-      const combined = [filesCtx, dirsCtx].filter((s) => s.length > 0).join("\n\n")
+      const combined = [filesCtx, dirsCtx]
+        .filter((s) => s.length > 0)
+        .join("\n\n")
       if (combined) {
         await navigator.clipboard.writeText(combined)
         setReadCopied(true)
@@ -657,7 +710,7 @@ function AssistantRow({
     <div
       className={cn(
         "group flex gap-2.5",
-        isGrouped ? "mt-2" : "mt-6 first:mt-0",
+        isGrouped ? "mt-2" : "mt-6 first:mt-0"
       )}
     >
       <div
@@ -665,7 +718,7 @@ function AssistantRow({
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
           isGrouped
             ? "invisible"
-            : "bg-muted text-muted-foreground ring-1 ring-border/60",
+            : "bg-muted text-muted-foreground ring-1 ring-border/60"
         )}
         aria-hidden={isGrouped}
       >
@@ -709,7 +762,7 @@ function AssistantRow({
                   className={cn(
                     "flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-[10.5px] text-foreground/80 shadow-sm",
                     "hover:bg-muted hover:text-foreground",
-                    "disabled:cursor-not-allowed disabled:opacity-60",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
                   )}
                 >
                   {readCopied ? (
@@ -766,7 +819,7 @@ function ViewModeTab({
         "px-2 py-1 transition-colors",
         active
           ? "bg-muted font-medium text-foreground"
-          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       )}
     >
       {label}
@@ -779,7 +832,7 @@ function useMessageActions(
   plainContent: string,
   templates: Template[],
   onEdit?: (id: number, newContent: string) => void,
-  options?: { autoCollapse?: boolean },
+  options?: { autoCollapse?: boolean }
 ) {
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(plainContent)
@@ -805,16 +858,20 @@ function useMessageActions(
     setCollapsed(shouldAutoCollapse)
   }, [shouldAutoCollapse])
 
-  const setCollapsedByUser = useCallback((v: boolean | ((p: boolean) => boolean)) => {
-    userToggledRef.current = true
-    setCollapsed(v)
-  }, [])
+  const setCollapsedByUser = useCallback(
+    (v: boolean | ((p: boolean) => boolean)) => {
+      userToggledRef.current = true
+      setCollapsed(v)
+    },
+    []
+  )
 
   const collapsedPreview = (() => {
-    const firstLine = plainContent
-      .split("\n")
-      .map((s) => s.trim())
-      .find((s) => s.length > 0) ?? ""
+    const firstLine =
+      plainContent
+        .split("\n")
+        .map((s) => s.trim())
+        .find((s) => s.length > 0) ?? ""
     const MAX = 80
     return firstLine.length > MAX ? `${firstLine.slice(0, MAX)}…` : firstLine
   })()
@@ -831,12 +888,10 @@ function useMessageActions(
         const filesContext = await buildFilesContext(tokenPaths)
         const templatesContext = buildTemplatesContext([body], templates)
         const prefixes = [templatesContext, filesContext].filter(
-          (s) => s.length > 0,
+          (s) => s.length > 0
         )
         finalText =
-          prefixes.length > 0
-            ? `${prefixes.join("\n\n")}\n\n${header}`
-            : header
+          prefixes.length > 0 ? `${prefixes.join("\n\n")}\n\n${header}` : header
       } else {
         const { files, dirs } = extractRequestPathsByKindFromMessages([msg])
         const [filesCtx, dirsCtx] = await Promise.all([
@@ -952,27 +1007,18 @@ function MessageEditor({
       if (!payload?.paths?.length) return
 
       const hasCoords =
-        payload.hasCoords &&
-        payload.x !== undefined &&
-        payload.y !== undefined
+        payload.hasCoords && payload.x !== undefined && payload.y !== undefined
 
       const allTargets = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]')
       )
 
       let winner: HTMLElement | null = null
 
       if (hasCoords) {
-        // 有坐标(拖放场景):严格按落点判定,未命中即放弃 —— 与外部文件
-        // 拖入的行为保持一致,不因焦点误插。
-        const stack = document.elementsFromPoint(payload.x, payload.y)
-        for (const el of stack) {
-          const t = allTargets.find((tgt) => tgt.contains(el))
-          if (t) {
-            winner = t
-            break
-          }
-        }
+        // 有坐标(拖放场景):统一走最具体(嵌套最深)目标判定,确保
+        // 消息编辑器优先于包围它的会话消息区域(代理落点)。
+        winner = resolveFileDropTarget(payload.x, payload.y)
       } else {
         const focused = document.activeElement
         if (focused instanceof HTMLElement) {
@@ -1016,7 +1062,7 @@ function MessageEditor({
           "w-full min-w-0 rounded border bg-background/80 px-2 py-1 text-foreground transition-colors",
           "focus-within:ring-1 focus-within:ring-ring",
           isDragOver && "border-primary bg-primary/5 ring-2 ring-primary/40",
-          "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40",
+          "[&.file-drop-target-active]:border-primary [&.file-drop-target-active]:bg-primary/5 [&.file-drop-target-active]:ring-2 [&.file-drop-target-active]:ring-primary/40"
         )}
       >
         <RichEditor
@@ -1042,7 +1088,11 @@ function MessageEditor({
           type="button"
           onClick={() => {
             const plain = documentToPlainText(value)
-            if (typeof plain === "string" ? plain.trim() : String(plain ?? "").trim()) {
+            if (
+              typeof plain === "string"
+                ? plain.trim()
+                : String(plain ?? "").trim()
+            ) {
               onSave()
             }
           }}
