@@ -7,47 +7,6 @@ import {
   type DragEvent as ReactDragEvent,
 } from "react"
 
-/**
- * 拖拽状态清除的通用兜底监听器安装函数。
- *
- * 背景:HTML5 拖放的原生事件对以下几种"取消场景"并不友好:
- *   1. 按 ESC 取消系统级(OS)文件拖拽 —— 不会向落点派发 dragleave,
- *      也不会派发 dragend(拖拽源在浏览器之外)。
- *   2. 拖拽出窗口 —— dragleave 的 relatedTarget 为 null,若外层用
- *      currentTarget === target 判断则会漏掉。
- *   3. 在编辑器以外的地方 drop —— 落点节点不会收到任何 dragleave。
- *   4. 窗口失焦(alt-tab 切走) —— 拖拽视觉态也应回退。
- *
- * 这里在 window 层统一兜底,保证上述任一场景发生后都能可靠地 clear 状态。
- * 返回一个卸载函数,调用后所有监听器一并移除。
- */
-function installDragCancelFallback(clear: () => void): () => void {
-  const doClear = () => clear()
-
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") clear()
-  }
-
-  // window 级 dragleave:relatedTarget 为 null 表示光标离开了整个窗口
-  const onWindowLeave = (e: DragEvent) => {
-    if (e.relatedTarget === null) clear()
-  }
-
-  window.addEventListener("dragend", doClear, true)
-  window.addEventListener("drop", doClear, true)
-  window.addEventListener("dragleave", onWindowLeave, true)
-  window.addEventListener("keydown", onKey, true)
-  window.addEventListener("blur", doClear, true)
-
-  return () => {
-    window.removeEventListener("dragend", doClear, true)
-    window.removeEventListener("drop", doClear, true)
-    window.removeEventListener("dragleave", onWindowLeave, true)
-    window.removeEventListener("keydown", onKey, true)
-    window.removeEventListener("blur", doClear, true)
-  }
-}
-
 import {
   RichEditor,
   type RichEditorHandle,
@@ -55,7 +14,13 @@ import {
 } from "@/shared/rich-editor"
 import { cn } from "@/lib/utils"
 import { FILE_DROP_ROLE } from "@/shared/config"
-import { hasDroppableFiles, resolveFileDropTarget } from "@/shared/model"
+import {
+  hasDroppableFiles,
+  resolveFileDropTarget,
+  onFileDragCancel,
+  consumeFileDragCancelled,
+  installGlobalFileDragCancel,
+} from "@/shared/model"
 import { useComposeSettingsStore } from "../model/compose-settings.store"
 import { useDraftStore } from "../model/draft.store"
 
@@ -110,14 +75,15 @@ export function RichComposer({
   // 拖拽 enter/leave 计数器:处理"从父节点进入子节点时 dragleave 也会触发"
   // 这个 HTML5 拖放的经典缺陷 —— 只有当计数归零时才真正认为拖出。
   const dragCounterRef = useRef(0)
-  // 窗口级兜底监听器的卸载函数,只在计数 > 0 期间挂载。
-  const fallbackDisposerRef = useRef<(() => void) | null>(null)
 
   const clearDragState = useCallback(() => {
     dragCounterRef.current = 0
     setIsDragOver(false)
-    fallbackDisposerRef.current?.()
-    fallbackDisposerRef.current = null
+  }, [])
+
+  // 全局拖拽取消兜底监听,只安装一次(幂等)。
+  useEffect(() => {
+    installGlobalFileDragCancel()
   }, [])
 
   useEffect(() => {
@@ -146,11 +112,11 @@ export function RichComposer({
           const templatesContext = buildTemplatesContext(
             [body],
             templates,
-            extraTemplateIds,
+            extraTemplateIds
           )
           const header = `**User**:\n\n${body}`
           const prefixes = [templatesContext, filesContext].filter(
-            (s) => s.length > 0,
+            (s) => s.length > 0
           )
           const finalText =
             prefixes.length > 0
@@ -175,17 +141,13 @@ export function RichComposer({
     (id: number) => {
       onToggleTemplate(id)
     },
-    [onToggleTemplate],
+    [onToggleTemplate]
   )
 
   const handleDragEnter = (e: ReactDragEvent<HTMLDivElement>) => {
     if (!hasDroppableFiles(e.dataTransfer)) return
     dragCounterRef.current += 1
     if (!isDragOver) setIsDragOver(true)
-    // 首次进入时挂载窗口级兜底,应对 ESC / 拖出窗口 / 窗口失焦等取消场景
-    if (!fallbackDisposerRef.current) {
-      fallbackDisposerRef.current = installDragCancelFallback(clearDragState)
-    }
   }
 
   const handleDragOver = (e: ReactDragEvent<HTMLDivElement>) => {
@@ -194,9 +156,6 @@ export function RichComposer({
       e.dataTransfer.dropEffect = "copy"
       // 有些浏览器/场景 dragenter 早于 mount 触发或被吞,补位保证状态一致
       if (!isDragOver) setIsDragOver(true)
-      if (!fallbackDisposerRef.current) {
-        fallbackDisposerRef.current = installDragCancelFallback(clearDragState)
-      }
     }
   }
 
@@ -221,18 +180,23 @@ export function RichComposer({
     // 不 stopPropagation,让 Wails 拦截器收到冒泡(外部文件拖入通道)
   }
 
-  // 组件卸载时确保兜底监听器被移除
+  // 组件卸载时确保视觉态清理回调被移除(全局监听由 installGlobalFileDragCancel
+  // 幂等保证只装一次,不随组件卸载移除)
   useEffect(() => {
-    return () => {
-      fallbackDisposerRef.current?.()
-      fallbackDisposerRef.current = null
-    }
-  }, [])
+    const unregister = onFileDragCancel(clearDragState)
+    return unregister
+  }, [clearDragState])
 
   useEffect(() => {
     const unsub = Events.On("files:dropped", (evt) => {
       const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
       if (!payload?.paths?.length) return
+
+      // ESC / 拖出窗口已取消本次拖拽:直接忽略,不再插入,这才是"取消"语义。
+      if (consumeFileDragCancelled()) {
+        clearDragState()
+        return
+      }
 
       const handle = editorRef.current
       if (!handle) return
@@ -245,12 +209,10 @@ export function RichComposer({
       // 有坐标时统一走 resolveFileDropTarget(取嵌套最深命中);无坐标时用焦点判定。
       // 命中自身或命中消息区域(代理到输入框)才处理,否则让位给对应的 MessageEditor。
       const hasCoords =
-        payload.hasCoords &&
-        payload.x !== undefined &&
-        payload.y !== undefined
+        payload.hasCoords && payload.x !== undefined && payload.y !== undefined
 
       const allTargets = Array.from(
-        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]'),
+        document.querySelectorAll<HTMLElement>('[data-file-drop-target="true"]')
       )
 
       let winner: HTMLElement | null = null
@@ -267,7 +229,7 @@ export function RichComposer({
         //  2) 焦点不在任何 composer 中时,把所有 composer 角色的目标视为候选,
         //     若唯一则交给它作为兜底 —— 这正是右键菜单场景的通路。
         const composerTargets = allTargets.filter(
-          (t) => t.getAttribute("data-file-drop-role") === "composer",
+          (t) => t.getAttribute("data-file-drop-role") === "composer"
         )
         const focused = document.activeElement
         if (focused instanceof HTMLElement) {
@@ -282,7 +244,8 @@ export function RichComposer({
       // 命中会话消息区域:把它视为输入框的"代理落点",
       // 无论位置几何,都把文件追加到输入框光标处。
       const isMessageAreaProxy =
-        winner?.getAttribute("data-file-drop-role") === FILE_DROP_ROLE.messageArea
+        winner?.getAttribute("data-file-drop-role") ===
+        FILE_DROP_ROLE.messageArea
       if (!isSelf && !isMessageAreaProxy) return
 
       clearDragState()
@@ -301,8 +264,8 @@ export function RichComposer({
 
   const rawPlain = documentToPlainText(doc)
   const canSend =
-    (typeof rawPlain === "string" ? rawPlain : String(rawPlain ?? ""))
-      .trim().length > 0
+    (typeof rawPlain === "string" ? rawPlain : String(rawPlain ?? "")).trim()
+      .length > 0
 
   return (
     // Zed 风格:
@@ -322,10 +285,10 @@ export function RichComposer({
       className={cn(
         "flex flex-col border-t border-border bg-transparent transition-colors",
         isDragOver && "border-t-primary bg-primary/5",
-        "[&.file-drop-target-active]:border-t-primary [&.file-drop-target-active]:bg-primary/5",
+        "[&.file-drop-target-active]:border-t-primary [&.file-drop-target-active]:bg-primary/5"
       )}
     >
-      <div className="px-5 pb-1 pt-2.5">
+      <div className="px-5 pt-2.5 pb-1">
         <RichEditor
           value={doc}
           onChange={setDoc}
@@ -337,7 +300,7 @@ export function RichComposer({
           className="w-full"
         />
       </div>
-      <div className="px-5 pb-0.5 pt-1">
+      <div className="px-5 pt-1 pb-0.5">
         <ComposerToolbar
           templates={templates}
           selectedIds={selectedTemplateIds}

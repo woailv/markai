@@ -16,3 +16,9 @@ export { useLayoutStore } from "./layout.store"
 export type { LayoutStore } from "./layout.store"
 
 export { hasDroppableFiles, resolveFileDropTarget } from "./drop-target"
+
+export {
+  onFileDragCancel,
+  consumeFileDragCancelled,
+  installGlobalFileDragCancel,
+} from "./drag-cancel"

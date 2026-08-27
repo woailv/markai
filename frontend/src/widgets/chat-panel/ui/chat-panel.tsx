@@ -43,7 +43,12 @@ import {
 } from "@/components/ui/context-menu"
 import { cn } from "@/lib/utils"
 import { FILE_DROP_ROLE } from "@/shared/config"
-import { hasDroppableFiles, resolveFileDropTarget } from "@/shared/model"
+import {
+  hasDroppableFiles,
+  resolveFileDropTarget,
+  onFileDragCancel,
+  consumeFileDragCancelled,
+} from "@/shared/model"
 
 import { AssistantMessage } from "@/features/assistant"
 import { RichComposer } from "@/features/composer"
@@ -132,6 +137,15 @@ export function ChatPanel({
       e.preventDefault()
     }
   }
+
+  // ESC / 拖出窗口等取消时,一并清理会话区域的遮罩视觉态。
+  useEffect(() => {
+    const unregister = onFileDragCancel(() => {
+      areaDragCounterRef.current = 0
+      setIsAreaDragOver(false)
+    })
+    return unregister
+  }, [])
 
   // 用户手动上滚时,暂停自动跟随;回到底部区间(阈值 32px)时恢复
   useEffect(() => {
@@ -996,6 +1010,11 @@ function MessageEditor({
   }, [])
 
   useEffect(() => {
+    const unregister = onFileDragCancel(() => setIsDragOver(false))
+    return unregister
+  }, [])
+
+  useEffect(() => {
     const unsub = Events.On("files:dropped", (evt) => {
       const handle = editorRef.current
       if (!handle) return
@@ -1005,6 +1024,12 @@ function MessageEditor({
       if (!root) return
       const payload = Array.isArray(evt.data) ? evt.data[0] : evt.data
       if (!payload?.paths?.length) return
+
+      // ESC / 拖出窗口已取消本次拖拽:直接忽略,不再插入。
+      if (consumeFileDragCancelled()) {
+        setIsDragOver(false)
+        return
+      }
 
       const hasCoords =
         payload.hasCoords && payload.x !== undefined && payload.y !== undefined
