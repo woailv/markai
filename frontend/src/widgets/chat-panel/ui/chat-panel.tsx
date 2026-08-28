@@ -102,6 +102,15 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
+  // 发送消息时置位:无论当前滚动位置在哪,下一条消息落地后都强制滚到最新处。
+  // 与日常的"底部跟随"区分开,避免用户上滚阅读时发送消息后看不到自己的新消息。
+  const scrollOnNextUpdateRef = useRef(false)
+
+  const handleSend = (content: string) => {
+    stickToBottomRef.current = true
+    scrollOnNextUpdateRef.current = true
+    onSend(content)
+  }
 
   // 会话消息区域作为输入框的"代理落点"的拖拽视觉反馈。
   // 命中后真实插入由 RichComposer 的 files:dropped 处理器完成;这里只负责
@@ -161,7 +170,16 @@ export function ChatPanel({
 
   useEffect(() => {
     const el = scrollRef.current
-    if (!el || !stickToBottomRef.current) return
+    if (!el) return
+    // 发送触发的强制滚动:平滑滚到最新处,一次性消费。
+    if (scrollOnNextUpdateRef.current) {
+      scrollOnNextUpdateRef.current = false
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+      })
+      return
+    }
+    if (!stickToBottomRef.current) return
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight
     })
@@ -304,7 +322,7 @@ export function ChatPanel({
             底部不加 padding,让输入框紧贴底部状态栏。 */}
         <div className="shrink-0 pt-0 pb-0">
           <RichComposer
-            onSend={onSend}
+            onSend={handleSend}
             templates={templates}
             selectedTemplateIds={selectedTemplateIds}
             onToggleTemplate={onToggleTemplate}
