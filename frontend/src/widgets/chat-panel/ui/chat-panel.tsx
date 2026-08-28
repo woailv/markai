@@ -300,8 +300,9 @@ export function ChatPanel({
         </ChatAreaContextMenu>
 
         {/* Zed 风格无边输入区:外层不加水平 padding,让 RichComposer 顶部分隔线
-            能与左右两侧的垂直分割线无缝相接;水平留白由 RichComposer 内部承担 */}
-        <div className="shrink-0 pt-0 pb-2">
+            能与左右两侧的垂直分割线无缝相接;水平留白由 RichComposer 内部承担。
+            底部不加 padding,让输入框紧贴底部状态栏。 */}
+        <div className="shrink-0 pt-0 pb-0">
           <RichComposer
             onSend={onSend}
             templates={templates}
