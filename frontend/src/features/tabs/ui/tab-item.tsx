@@ -10,6 +10,8 @@ import {
 import { useEffect, useRef, useState, type MouseEvent } from "react"
 
 import { cn } from "@/lib/utils"
+import { useTemplateStore } from "@/entities/template"
+import { renameEntry } from "@/features/workspace"
 import type { Tab } from "../model/tab.store"
 import { useTabStore } from "../model/tab.store"
 
@@ -270,6 +272,40 @@ function TabContextMenu({
     onClose()
   }
 
+  /**
+   * 重命名:
+   * - file tab:重命名磁盘文件本身(复用 workspace 的 renameEntry),
+   *   工作区内文件由 watcher 事件同步 tab 路径;工作区外文件手动兜底同步。
+   * - template tab:更新模板标题;tab 标题由 template-tab-view 的 effect 自动同步。
+   */
+  const handleRename = async () => {
+    onClose()
+    if (tab.kind === "file") {
+      const name = window.prompt("输入新文件名", tab.title)
+      if (name == null) return
+      const newName = name.trim()
+      if (!newName || newName === tab.title) return
+      const res = await renameEntry(tab.path, newName)
+      if (res.ok && res.path && res.path !== tab.path) {
+        useTabStore.getState().updateFilePath(tab.path, res.path)
+      }
+      return
+    }
+    if (tab.kind !== "template" || tab.templateId == null) return
+    const title = window.prompt("输入新模板名称", tab.title)
+    if (title == null) return
+    const newTitle = title.trim()
+    if (!newTitle || newTitle === tab.title) return
+    const store = useTemplateStore.getState()
+    const tpl = store.getById(tab.templateId)
+    if (!tpl) return
+    try {
+      await store.update(tab.templateId, newTitle, tpl.content)
+    } catch (err) {
+      console.error("[tab-item] rename template failed", err)
+    }
+  }
+
   return (
     <>
       <div
@@ -295,6 +331,12 @@ function TabContextMenu({
         <div className="my-1 h-px bg-border" />
         <MenuItem onClick={onTogglePin}>
           {pinned ? "取消固定" : "固定标签"}
+        </MenuItem>
+        <MenuItem
+          onClick={handleRename}
+          disabled={tab.kind === "template" && tab.templateId == null}
+        >
+          重命名
         </MenuItem>
         {tab.kind === "file" && (
           <>

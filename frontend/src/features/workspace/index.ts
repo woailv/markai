@@ -8,5 +8,7 @@ export {
   refreshRoot,
 } from "./model/use-workspace-events"
 
+export { renameEntry } from "./model/file-ops"
+
 export { WorkspacePanel } from "./ui/workspace-panel"
 export type { WorkspacePanelProps } from "./ui/workspace-panel"
