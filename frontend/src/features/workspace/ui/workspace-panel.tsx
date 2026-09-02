@@ -697,13 +697,13 @@ function TreeArea() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               disabled={deleting}
               onClick={(e) => {
                 // 阻止默认关闭:等 confirmDelete 完成后再由自身清空 deleteTargets
                 e.preventDefault()
                 void confirmDelete()
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleting ? "删除中…" : "删除"}
             </AlertDialogAction>

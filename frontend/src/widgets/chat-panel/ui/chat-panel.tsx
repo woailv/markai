@@ -442,11 +442,11 @@ function ChatAreaContextMenu({
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={() => {
                 onClear()
                 setConfirmOpen(false)
               }}
-              className="text-destructive-foreground bg-destructive hover:bg-destructive/90"
             >
               清空
             </AlertDialogAction>
